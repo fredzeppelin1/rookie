@@ -168,7 +168,7 @@ namespace AndroidSideloader.ViewModels
             set => this.RaiseAndSetIfChanged(ref _batteryLevelText, value);
         }
 
-        private string _diskSpaceText = "";
+        private string _diskSpaceText = "Total space: N/A\nUsed space: N/A\nFree space: N/A";
         public string DiskSpaceText
         {
             get => _diskSpaceText;
@@ -209,9 +209,13 @@ namespace AndroidSideloader.ViewModels
             set
             {
                 this.RaiseAndSetIfChanged(ref _showFavoritesOnly, value);
-                ApplyFilters().GetAwaiter().GetResult();
+                this.RaisePropertyChanged(nameof(GamesListButtonText)); // Update button text
+                _ = ApplyFilters(); // Fire and forget - don't block UI thread
             }
         }
+
+        // Button text that changes based on ShowFavoritesOnly
+        public string GamesListButtonText => ShowFavoritesOnly ? "Favorited Games" : "Games List";
 
         // Status filter flags (mutually exclusive)
         private bool _showUpToDateOnly;
@@ -221,7 +225,7 @@ namespace AndroidSideloader.ViewModels
             set
             {
                 this.RaiseAndSetIfChanged(ref _showUpToDateOnly, value);
-                ApplyFilters().GetAwaiter().GetResult();
+                _ = ApplyFilters(); // Fire and forget - don't block UI thread
             }
         }
 
@@ -232,7 +236,7 @@ namespace AndroidSideloader.ViewModels
             set
             {
                 this.RaiseAndSetIfChanged(ref _showUpdateAvailableOnly, value);
-                ApplyFilters().GetAwaiter().GetResult();
+                _ = ApplyFilters(); // Fire and forget - don't block UI thread
             }
         }
 
@@ -243,7 +247,7 @@ namespace AndroidSideloader.ViewModels
             set
             {
                 this.RaiseAndSetIfChanged(ref _showNewerThanListOnly, value);
-                ApplyFilters().GetAwaiter().GetResult();
+                _ = ApplyFilters(); // Fire and forget - don't block UI thread
             }
         }
 
@@ -291,6 +295,16 @@ namespace AndroidSideloader.ViewModels
         public int UpToDateCount => _allGames.Count(g => g.IsInstalled && !g.HasUpdate);
         public int UpdateAvailableCount => _allGames.Count(g => g.HasUpdate);
         public int NewerThanListCount => _allGames.Count(g => g.IsInstalled && g.InstalledVersionCode > g.AvailableVersionCode && g.AvailableVersionCode > 0);
+
+        /// <summary>
+        /// Notify UI that status counts have changed
+        /// </summary>
+        private void NotifyStatusCountsChanged()
+        {
+            this.RaisePropertyChanged(nameof(UpToDateCount));
+            this.RaisePropertyChanged(nameof(UpdateAvailableCount));
+            this.RaisePropertyChanged(nameof(NewerThanListCount));
+        }
 
         public MainViewModel(bool showUpdateAvailableOnly, IDialogService dialogService = null)
         {
@@ -416,7 +430,8 @@ namespace AndroidSideloader.ViewModels
         {
             if (string.IsNullOrEmpty(SettingsManager.Instance.CurrentLogPath))
             {
-                SettingsManager.Instance.CurrentLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                // Set to full file path, not just directory
+                SettingsManager.Instance.CurrentLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debuglog.txt");
                 SettingsManager.Instance.Save();
             }
         }
@@ -806,6 +821,19 @@ namespace AndroidSideloader.ViewModels
                     return;
                 }
 
+                // Check if using public mirror mode
+                if (Rclone.HasPublicConfig && SelectedRemote == "VRP Public Mirror")
+                {
+                    if (_dialogService != null)
+                    {
+                        await _dialogService.ShowInfoAsync(
+                            "Thumbnails are automatically downloaded from the public mirror when you refresh the game list.\n\n" +
+                            "No separate download is needed.",
+                            "Already Downloaded");
+                    }
+                    return;
+                }
+
                 // Confirm with user
                 if (_dialogService != null)
                 {
@@ -1078,6 +1106,9 @@ namespace AndroidSideloader.ViewModels
                     }
 
                     Logger.Log($"Device info refreshed for: {Adb.DeviceId}");
+
+                    // Automatically refresh installed apps status to populate counts
+                    await RefreshInstalledAppsStatusAsync();
                 }
             }
             catch (Exception ex)
@@ -1110,10 +1141,10 @@ namespace AndroidSideloader.ViewModels
                 Logger.Log($"Found {installedPackages.Count} installed packages");
 
                 // Update game list with install status
+                var updatesAvailable = 0;
+
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    var updatesAvailable = 0;
-
                     foreach (var game in _allGames)
                     {
                         if (installedPackages.TryGetValue(game.PackageName, out var versionInfo))
@@ -1141,14 +1172,17 @@ namespace AndroidSideloader.ViewModels
                             game.InstalledVersionCode = 0;
                         }
                     }
-
-                    // Re-apply filters to refresh UI
-                    ApplyFilters().GetAwaiter().GetResult();
-
-                    ProgressStatusText = updatesAvailable > 0 
-                        ? $"Found {updatesAvailable} game(s) with updates available" 
-                        : "All installed games are up to date";
                 });
+
+                // Re-apply filters to refresh UI (outside dispatcher to avoid blocking)
+                await ApplyFilters();
+
+                // Notify UI that status counts have changed
+                NotifyStatusCountsChanged();
+
+                ProgressStatusText = updatesAvailable > 0
+                    ? $"Found {updatesAvailable} game(s) with updates available"
+                    : "All installed games are up to date";
 
                 HideProgress();
                 Logger.Log("Installed apps status refreshed");
@@ -1753,8 +1787,17 @@ namespace AndroidSideloader.ViewModels
 
                 if (!string.IsNullOrEmpty(SelectedRemote))
                 {
-                    // Load full game list from remote (doesn't require device)
-                    await LoadGamesFromRemoteAsync(SelectedRemote);
+                    // Check if using public config mode
+                    if (Rclone.HasPublicConfig && SelectedRemote == "VRP Public Mirror")
+                    {
+                        Logger.Log("Refreshing from public mirror (HTTP backend)");
+                        await LoadGamesFromPublicMirrorAsync();
+                    }
+                    else
+                    {
+                        // Load full game list from named remote (doesn't require device)
+                        await LoadGamesFromRemoteAsync(SelectedRemote);
+                    }
                 }
                 else
                 {
@@ -1885,70 +1928,85 @@ namespace AndroidSideloader.ViewModels
 
                 ProgressStatusText = $"Pulling {SelectedGame.GameName} data to desktop...";
 
-                // Get the APK path on device
-                var pathResult = Adb.RunAdbCommandToString($"shell pm path {SelectedGame.PackageName}");
+                // Run all blocking operations in background thread
+                var (success, zipPath, zipFileName, errorMessage) = await Task.Run(() =>
+                {
+                    try
+                    {
+                        // Get the APK path on device
+                        var pathResult = Adb.RunAdbCommandToString($"shell pm path {SelectedGame.PackageName}");
 
-                if (!pathResult.Output.Contains("package:"))
+                        if (!pathResult.Output.Contains("package:"))
+                        {
+                            return (false, "", "", $"Could not find package {SelectedGame.PackageName} on device.");
+                        }
+
+                        var apkPath = pathResult.Output.Replace("package:", "").Trim();
+
+                        // Create output directory on desktop
+                        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                        var outputDir = Path.Combine(desktopPath, SelectedGame.PackageName);
+                        Directory.CreateDirectory(outputDir);
+
+                        // Pull APK
+                        var apkOutput = Path.Combine(outputDir, "base.apk");
+                        var pullApkResult = Adb.RunAdbCommandToString($"pull \"{apkPath}\" \"{apkOutput}\"");
+
+                        // Pull OBB files if they exist
+                        var obbPath = $"/sdcard/Android/obb/{SelectedGame.PackageName}/";
+                        var obbCheckResult = Adb.RunAdbCommandToString($"shell ls \"{obbPath}\"");
+
+                        if (!obbCheckResult.Output.Contains("No such file"))
+                        {
+                            var obbOutputDir = Path.Combine(outputDir, "obb");
+                            Directory.CreateDirectory(obbOutputDir);
+                            var pullObbResult = Adb.RunAdbCommandToString($"pull \"{obbPath}\" \"{obbOutputDir}\"");
+                        }
+
+                        // Pull app data if accessible (may require root)
+                        var dataPath = $"/sdcard/Android/data/{SelectedGame.PackageName}/";
+                        var dataCheckResult = Adb.RunAdbCommandToString($"shell ls \"{dataPath}\"");
+
+                        if (!dataCheckResult.Output.Contains("No such file"))
+                        {
+                            var dataOutputDir = Path.Combine(outputDir, "data");
+                            Directory.CreateDirectory(dataOutputDir);
+                            var pullDataResult = Adb.RunAdbCommandToString($"pull \"{dataPath}\" \"{dataOutputDir}\"");
+                        }
+
+                        // Create zip archive of the pulled app (matching original behavior)
+                        var versionCode = SelectedGame.InstalledVersionCode > 0 ? SelectedGame.InstalledVersionCode.ToString() : "unknown";
+                        var zipFileName = $"{SelectedGame.GameName} v{versionCode} {SelectedGame.PackageName}.zip";
+                        var zipPath = Path.Combine(desktopPath, zipFileName);
+
+                        // Remove existing zip if it exists
+                        if (File.Exists(zipPath))
+                        {
+                            File.Delete(zipPath);
+                        }
+
+                        // Create archive of the output directory
+                        SevenZip.CreateArchive(zipPath, $"{outputDir}/*").Wait();
+
+                        // Delete the temporary folder now that we have the zip
+                        Directory.Delete(outputDir, true);
+
+                        return (true, zipPath, zipFileName, "");
+                    }
+                    catch (Exception ex)
+                    {
+                        return (false, "", "", ex.Message);
+                    }
+                });
+
+                if (!success)
                 {
                     if (_dialogService != null)
                     {
-                        await _dialogService.ShowErrorAsync(
-                            $"Could not find package {SelectedGame.PackageName} on device.",
-                            "Package Not Found");
+                        await _dialogService.ShowErrorAsync(errorMessage, "Error");
                     }
                     return;
                 }
-
-                var apkPath = pathResult.Output.Replace("package:", "").Trim();
-
-                // Create output directory on desktop
-                var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                var outputDir = Path.Combine(desktopPath, SelectedGame.PackageName);
-                Directory.CreateDirectory(outputDir);
-
-                // Pull APK
-                var apkOutput = Path.Combine(outputDir, "base.apk");
-                var pullApkResult = Adb.RunAdbCommandToString($"pull \"{apkPath}\" \"{apkOutput}\"");
-
-                // Pull OBB files if they exist
-                var obbPath = $"/sdcard/Android/obb/{SelectedGame.PackageName}/";
-                var obbCheckResult = Adb.RunAdbCommandToString($"shell ls \"{obbPath}\"");
-
-                if (!obbCheckResult.Output.Contains("No such file"))
-                {
-                    var obbOutputDir = Path.Combine(outputDir, "obb");
-                    Directory.CreateDirectory(obbOutputDir);
-                    var pullObbResult = Adb.RunAdbCommandToString($"pull \"{obbPath}\" \"{obbOutputDir}\"");
-                }
-
-                // Pull app data if accessible (may require root)
-                var dataPath = $"/sdcard/Android/data/{SelectedGame.PackageName}/";
-                var dataCheckResult = Adb.RunAdbCommandToString($"shell ls \"{dataPath}\"");
-
-                if (!dataCheckResult.Output.Contains("No such file"))
-                {
-                    var dataOutputDir = Path.Combine(outputDir, "data");
-                    Directory.CreateDirectory(dataOutputDir);
-                    var pullDataResult = Adb.RunAdbCommandToString($"pull \"{dataPath}\" \"{dataOutputDir}\"");
-                }
-
-                // Create zip archive of the pulled app (matching original behavior)
-                ProgressStatusText = "Creating zip archive...";
-                var versionCode = SelectedGame.InstalledVersionCode > 0 ? SelectedGame.InstalledVersionCode.ToString() : "unknown";
-                var zipFileName = $"{SelectedGame.GameName} v{versionCode} {SelectedGame.PackageName}.zip";
-                var zipPath = Path.Combine(desktopPath, zipFileName);
-
-                // Remove existing zip if it exists
-                if (File.Exists(zipPath))
-                {
-                    File.Delete(zipPath);
-                }
-
-                // Create archive of the output directory
-                await SevenZip.CreateArchive(zipPath, $"{outputDir}/*");
-
-                // Delete the temporary folder now that we have the zip
-                Directory.Delete(outputDir, true);
 
                 ProgressStatusText = "App pulled to desktop successfully!";
 
@@ -2011,8 +2069,8 @@ namespace AndroidSideloader.ViewModels
                     var sourcePath = result[0].Path.LocalPath;
                     Logger.Log($"Selected bulk OBB folder: {sourcePath}");
 
-                    // Get all subdirectories (each should be a package name)
-                    var packageFolders = Directory.GetDirectories(sourcePath);
+                    // Get all subdirectories (each should be a package name) - in background
+                    var packageFolders = await Task.Run(() => Directory.GetDirectories(sourcePath));
 
                     if (packageFolders.Length == 0)
                     {
@@ -2037,9 +2095,9 @@ namespace AndroidSideloader.ViewModels
 
                     ShowProgress($"Recursively copying OBB files from {packageFolders.Length} folders...");
 
-                    // Use recursive copy which handles nested folder structures
+                    // Use recursive copy which handles nested folder structures - in background
                     // This matches the original behavior and is more robust
-                    var copyResult = SideloaderUtilities.RecursiveCopyObb(sourcePath);
+                    var copyResult = await Task.Run(() => SideloaderUtilities.RecursiveCopyObb(sourcePath));
 
                     HideProgress();
 
@@ -2131,34 +2189,40 @@ namespace AndroidSideloader.ViewModels
                 if (result != null && result.Count > 0)
                 {
                     var backupPath = result[0].Path.LocalPath;
-                    var gameBackupDir = Path.Combine(backupPath, SelectedGame.PackageName);
-                    Directory.CreateDirectory(gameBackupDir);
-
                     ProgressStatusText = $"Backing up {SelectedGame.GameName} data...";
 
-                    // Backup OBB files
-                    var obbSourcePath = $"/sdcard/Android/obb/{SelectedGame.PackageName}/";
-                    var obbCheckResult = Adb.RunAdbCommandToString($"shell ls \"{obbSourcePath}\"");
-
-                    if (!obbCheckResult.Output.Contains("No such file"))
+                    // Run all blocking operations in background thread
+                    var gameBackupDir = await Task.Run(() =>
                     {
-                        var obbBackupDir = Path.Combine(gameBackupDir, "obb");
-                        Directory.CreateDirectory(obbBackupDir);
-                        var pullObbResult = Adb.RunAdbCommandToString($"pull \"{obbSourcePath}\" \"{obbBackupDir}\"");
-                        Logger.Log($"OBB backup result: {pullObbResult.Output}");
-                    }
+                        var gameBackupDir = Path.Combine(backupPath, SelectedGame.PackageName);
+                        Directory.CreateDirectory(gameBackupDir);
 
-                    // Backup app data from /sdcard/Android/data/
-                    var dataSourcePath = $"/sdcard/Android/data/{SelectedGame.PackageName}/";
-                    var dataCheckResult = Adb.RunAdbCommandToString($"shell ls \"{dataSourcePath}\"");
+                        // Backup OBB files
+                        var obbSourcePath = $"/sdcard/Android/obb/{SelectedGame.PackageName}/";
+                        var obbCheckResult = Adb.RunAdbCommandToString($"shell ls \"{obbSourcePath}\"");
 
-                    if (!dataCheckResult.Output.Contains("No such file"))
-                    {
-                        var dataBackupDir = Path.Combine(gameBackupDir, "data");
-                        Directory.CreateDirectory(dataBackupDir);
-                        var pullDataResult = Adb.RunAdbCommandToString($"pull \"{dataSourcePath}\" \"{dataBackupDir}\"");
-                        Logger.Log($"Data backup result: {pullDataResult.Output}");
-                    }
+                        if (!obbCheckResult.Output.Contains("No such file"))
+                        {
+                            var obbBackupDir = Path.Combine(gameBackupDir, "obb");
+                            Directory.CreateDirectory(obbBackupDir);
+                            var pullObbResult = Adb.RunAdbCommandToString($"pull \"{obbSourcePath}\" \"{obbBackupDir}\"");
+                            Logger.Log($"OBB backup result: {pullObbResult.Output}");
+                        }
+
+                        // Backup app data from /sdcard/Android/data/
+                        var dataSourcePath = $"/sdcard/Android/data/{SelectedGame.PackageName}/";
+                        var dataCheckResult = Adb.RunAdbCommandToString($"shell ls \"{dataSourcePath}\"");
+
+                        if (!dataCheckResult.Output.Contains("No such file"))
+                        {
+                            var dataBackupDir = Path.Combine(gameBackupDir, "data");
+                            Directory.CreateDirectory(dataBackupDir);
+                            var pullDataResult = Adb.RunAdbCommandToString($"pull \"{dataSourcePath}\" \"{dataBackupDir}\"");
+                            Logger.Log($"Data backup result: {pullDataResult.Output}");
+                        }
+
+                        return gameBackupDir;
+                    });
 
                     ProgressStatusText = "Gamedata backup complete!";
 
@@ -2224,12 +2288,12 @@ namespace AndroidSideloader.ViewModels
 
                     Logger.Log($"Restoring gamedata from: {backupPath}");
 
-                    // Check for obb and data folders
+                    // Check for obb and data folders (quick check, not blocking)
                     var obbBackupPath = Path.Combine(backupPath, "obb");
                     var dataBackupPath = Path.Combine(backupPath, "data");
 
-                    var hasObb = Directory.Exists(obbBackupPath);
-                    var hasData = Directory.Exists(dataBackupPath);
+                    var (hasObb, hasData) = await Task.Run(() =>
+                        (Directory.Exists(obbBackupPath), Directory.Exists(dataBackupPath)));
 
                     if (!hasObb && !hasData)
                     {
@@ -2255,36 +2319,40 @@ namespace AndroidSideloader.ViewModels
 
                     ProgressStatusText = $"Restoring gamedata for {packageName}...";
 
-                    // Restore OBB files
-                    if (hasObb)
+                    // Run all blocking operations in background thread
+                    await Task.Run(() =>
                     {
-                        var obbDestPath = $"/sdcard/Android/obb/{packageName}/";
-
-                        // Create OBB directory on device
-                        Adb.RunAdbCommandToString($"shell mkdir -p \"{obbDestPath}\"");
-
-                        // Push all files in obb backup folder
-                        var obbFiles = Directory.GetFiles(obbBackupPath, "*", SearchOption.AllDirectories);
-                        foreach (var obbFile in obbFiles)
+                        // Restore OBB files
+                        if (hasObb)
                         {
-                            var fileName = Path.GetFileName(obbFile);
-                            var pushResult = Adb.RunAdbCommandToString($"push \"{obbFile}\" \"{obbDestPath}{fileName}\"");
-                            Logger.Log($"Pushed OBB file: {fileName}");
+                            var obbDestPath = $"/sdcard/Android/obb/{packageName}/";
+
+                            // Create OBB directory on device
+                            Adb.RunAdbCommandToString($"shell mkdir -p \"{obbDestPath}\"");
+
+                            // Push all files in obb backup folder
+                            var obbFiles = Directory.GetFiles(obbBackupPath, "*", SearchOption.AllDirectories);
+                            foreach (var obbFile in obbFiles)
+                            {
+                                var fileName = Path.GetFileName(obbFile);
+                                var pushResult = Adb.RunAdbCommandToString($"push \"{obbFile}\" \"{obbDestPath}{fileName}\"");
+                                Logger.Log($"Pushed OBB file: {fileName}");
+                            }
                         }
-                    }
 
-                    // Restore data files
-                    if (hasData)
-                    {
-                        var dataDestPath = $"/sdcard/Android/data/{packageName}/";
+                        // Restore data files
+                        if (hasData)
+                        {
+                            var dataDestPath = $"/sdcard/Android/data/{packageName}/";
 
-                        // Create data directory on device
-                        Adb.RunAdbCommandToString($"shell mkdir -p \"{dataDestPath}\"");
+                            // Create data directory on device
+                            Adb.RunAdbCommandToString($"shell mkdir -p \"{dataDestPath}\"");
 
-                        // Push data folder recursively
-                        var pushDataResult = Adb.RunAdbCommandToString($"push \"{dataBackupPath}/.\" \"{dataDestPath}\"");
-                        Logger.Log($"Data restore result: {pushDataResult.Output}");
-                    }
+                            // Push data folder recursively
+                            var pushDataResult = Adb.RunAdbCommandToString($"push \"{dataBackupPath}/.\" \"{dataDestPath}\"");
+                            Logger.Log($"Data restore result: {pushDataResult.Output}");
+                        }
+                    });
 
                     ProgressStatusText = "Gamedata restore complete!";
 
@@ -2328,13 +2396,30 @@ namespace AndroidSideloader.ViewModels
                     return;
                 }
 
-                // Create mount directory
-                var mountPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mnt", SelectedRemote);
-                if (!Directory.Exists(mountPath))
+                // Check if trying to mount public mirror
+                if (Rclone.HasPublicConfig && SelectedRemote == "VRP Public Mirror")
                 {
-                    Directory.CreateDirectory(mountPath);
-                    Logger.Log($"Created mount directory: {mountPath}");
+                    if (_dialogService != null)
+                    {
+                        await _dialogService.ShowWarningAsync(
+                            "Cannot mount the VRP Public Mirror.\n\n" +
+                            "The public mirror uses HTTP protocol and cannot be mounted as a filesystem.\n" +
+                            "Files are downloaded directly when you sideload games.",
+                            "Mount Not Supported");
+                    }
+                    return;
                 }
+
+                // Create mount directory - in background
+                var mountPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mnt", SelectedRemote);
+                await Task.Run(() =>
+                {
+                    if (!Directory.Exists(mountPath))
+                    {
+                        Directory.CreateDirectory(mountPath);
+                        Logger.Log($"Created mount directory: {mountPath}");
+                    }
+                });
 
                 // Check if rclone mount is supported on this platform
                 var platformNote = "";
@@ -2592,21 +2677,15 @@ namespace AndroidSideloader.ViewModels
                 var downloadsPath = SettingsManager.Instance.DownloadDir;
                 Logger.Log($"Using download directory: {downloadsPath}");
 
-                // Ensure download directory exists
-                if (!Directory.Exists(downloadsPath))
+                // Ensure download directory exists and calculate hash - in background
+                var (hashDownloadPath, gameNameHash) = await Task.Run(() =>
                 {
-                    Directory.CreateDirectory(downloadsPath);
-                    Logger.Log($"Created download directory: {downloadsPath}");
-                }
+                    if (!Directory.Exists(downloadsPath))
+                    {
+                        Directory.CreateDirectory(downloadsPath);
+                        Logger.Log($"Created download directory: {downloadsPath}");
+                    }
 
-                // Use ReleaseName for folder (matches original which uses gameName)
-                var gameDownloadPath = Path.Combine(downloadsPath, SelectedGame.ReleaseName);
-
-                string localApkPath = null;
-
-                // PUBLIC MIRROR: Uses 7z archives, different download flow
-                if (SelectedRemote == "VRP Public Mirror")
-                {
                     // Calculate MD5 hash of game name (matching original behavior)
                     string gameNameHash;
                     using (var md5 = MD5.Create())
@@ -2626,6 +2705,17 @@ namespace AndroidSideloader.ViewModels
                     // Download to hash folder
                     var hashDownloadPath = Path.Combine(downloadsPath, gameNameHash);
                     Directory.CreateDirectory(hashDownloadPath);
+                    return (hashDownloadPath, gameNameHash);
+                });
+
+                // Use ReleaseName for folder (matches original which uses gameName)
+                var gameDownloadPath = Path.Combine(downloadsPath, SelectedGame.ReleaseName);
+
+                string localApkPath = null;
+
+                // PUBLIC MIRROR: Uses 7z archives, different download flow
+                if (SelectedRemote == "VRP Public Mirror")
+                {
 
                     try
                     {
@@ -2678,24 +2768,31 @@ namespace AndroidSideloader.ViewModels
                         Logger.Log($"Extraction complete to {downloadsPath}");
                         UpdateProgress(80, "Extraction complete");
 
-                        // Clean up hash folder
-                        if (Directory.Exists(hashDownloadPath))
+                        // Clean up hash folder and find APK - run in background
+                        localApkPath = await Task.Run(() =>
                         {
-                            Directory.Delete(hashDownloadPath, true);
-                            Logger.Log($"Cleaned up temporary download folder: {hashDownloadPath}");
-                        }
+                            if (Directory.Exists(hashDownloadPath))
+                            {
+                                Directory.Delete(hashDownloadPath, true);
+                                Logger.Log($"Cleaned up temporary download folder: {hashDownloadPath}");
+                            }
 
-                        // The archive should have created a folder with the game name (ReleaseName)
-                        // Update gameDownloadPath to point to the extracted folder
+                            // The archive should have created a folder with the game name (ReleaseName)
+                            // Update gameDownloadPath to point to the extracted folder
+                            var extractedPath = Path.Combine(downloadsPath, gameToDownload.ReleaseName);
+
+                            // Find the APK file in extracted content
+                            var apkFiles = Directory.GetFiles(extractedPath, "*.apk", SearchOption.AllDirectories);
+                            if (apkFiles.Length > 0)
+                            {
+                                Logger.Log($"Found APK: {Path.GetFileName(apkFiles[0])}");
+                                return apkFiles[0];
+                            }
+
+                            return null;
+                        });
+
                         gameDownloadPath = Path.Combine(downloadsPath, gameToDownload.ReleaseName);
-
-                        // Find the APK file in extracted content
-                        var apkFiles = Directory.GetFiles(gameDownloadPath, "*.apk", SearchOption.AllDirectories);
-                        if (apkFiles.Length > 0)
-                        {
-                            localApkPath = apkFiles[0];
-                            Logger.Log($"Found APK: {Path.GetFileName(localApkPath)}");
-                        }
                     }
                     catch (Exception ex)
                     {
@@ -2721,7 +2818,7 @@ namespace AndroidSideloader.ViewModels
                 // REGULAR REMOTES: Download entire game folder (matching original behavior)
                 else
                 {
-                    Directory.CreateDirectory(gameDownloadPath);
+                    await Task.Run(() => Directory.CreateDirectory(gameDownloadPath));
 
                     // Build remote path - matches original: "{currentRemote}:{RcloneGamesFolder}/{gameName}"
                     var remotePath = $"{SelectedRemote}:{SideloaderRclone.RcloneGamesFolder}/{gameToDownload.ReleaseName}";
@@ -2741,19 +2838,23 @@ namespace AndroidSideloader.ViewModels
                     await Rclone.runRcloneCommand_DownloadConfig(
                         $"copy \"{remotePath}\" \"{gameDownloadPath}\" --log-level INFO --stats=500ms --retries 2 --low-level-retries 1 --check-first");
 
-                    // Find APK file in downloaded folder (matching original)
-                    var downloadedFiles = Directory.GetFiles(gameDownloadPath);
-                    var apkFile = downloadedFiles.FirstOrDefault(file => Path.GetExtension(file).Equals(".apk", StringComparison.OrdinalIgnoreCase));
+                    // Find APK file in downloaded folder (matching original) - in background
+                    localApkPath = await Task.Run(() =>
+                    {
+                        var downloadedFiles = Directory.GetFiles(gameDownloadPath);
+                        var apkFile = downloadedFiles.FirstOrDefault(file => Path.GetExtension(file).Equals(".apk", StringComparison.OrdinalIgnoreCase));
 
-                    if (apkFile != null)
-                    {
-                        localApkPath = apkFile;
-                        Logger.Log($"Found APK: {Path.GetFileName(apkFile)}");
-                    }
-                    else
-                    {
-                        Logger.Log("Warning: No APK file found in downloaded folder", LogLevel.Warning);
-                    }
+                        if (apkFile != null)
+                        {
+                            Logger.Log($"Found APK: {Path.GetFileName(apkFile)}");
+                            return apkFile;
+                        }
+                        else
+                        {
+                            Logger.Log("Warning: No APK file found in downloaded folder", LogLevel.Warning);
+                            return null;
+                        }
+                    });
                 }
 
                 // Install if device connected and not in NoDevice mode
@@ -2770,8 +2871,8 @@ namespace AndroidSideloader.ViewModels
                         }
                     }
 
-                    // Copy OBB files (checks the gameDownloadPath for any .obb files)
-                    var obbFilesInFolder = Directory.GetFiles(gameDownloadPath, "*.obb", SearchOption.AllDirectories);
+                    // Copy OBB files (checks the gameDownloadPath for any .obb files) - in background
+                    var obbFilesInFolder = await Task.Run(() => Directory.GetFiles(gameDownloadPath, "*.obb", SearchOption.AllDirectories));
                     if (obbFilesInFolder.Length > 0)
                     {
                         UpdateProgress(90, "Copying OBB files...");
@@ -2841,9 +2942,13 @@ namespace AndroidSideloader.ViewModels
                     var completedGameName = gameToDownload.GameName;
                     var completedGamePath = gameDownloadPath;
 
-                    // Count downloaded files
-                    var apkCount = Directory.GetFiles(completedGamePath, "*.apk", SearchOption.AllDirectories).Length;
-                    var obbCount = Directory.GetFiles(completedGamePath, "*.obb", SearchOption.AllDirectories).Length;
+                    // Count downloaded files - in background
+                    var (apkCount, obbCount) = await Task.Run(() =>
+                    {
+                        var apkCount = Directory.GetFiles(completedGamePath, "*.apk", SearchOption.AllDirectories).Length;
+                        var obbCount = Directory.GetFiles(completedGamePath, "*.obb", SearchOption.AllDirectories).Length;
+                        return (apkCount, obbCount);
+                    });
                     var totalDownloaded = apkCount + obbCount;
 
                     var message = $"Download complete!\n\nGame: {completedGameName}\n" +
@@ -2994,25 +3099,17 @@ namespace AndroidSideloader.ViewModels
 
         private async Task ShowGamesListAsync()
         {
-            Logger.Log("Games List command triggered");
+            Logger.Log("Games List toggle command triggered");
 
             try
             {
-                // Open the VRP games list in browser
-                var gamesListUrl = "https://wiki.vrpirates.club/en/gamelist";
+                // Toggle between showing all games and showing only favorites
+                ShowFavoritesOnly = !ShowFavoritesOnly;
 
-                if (_dialogService != null)
-                {
-                    var confirmed = await _dialogService.ShowConfirmationAsync(
-                        $"Open VR Pirates games list in your browser?\n\n{gamesListUrl}",
-                        "Open Games List");
+                Logger.Log($"Games list filter toggled - ShowFavoritesOnly: {ShowFavoritesOnly}");
 
-                    if (!confirmed) return;
-                }
-
-                OpenUrl(gamesListUrl);
-
-                Logger.Log($"Opened games list URL: {gamesListUrl}");
+                // ApplyFilters() is automatically called by the ShowFavoritesOnly property setter
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -3031,15 +3128,17 @@ namespace AndroidSideloader.ViewModels
 
             try
             {
-                var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
-                var aboutMessage = $"Rookie Sideloader\n" +
-                                   $"Version: {version}\n\n" +
-                                   $"A cross-platform Android sideloading tool for VR headsets.\n\n" +
-                                   $"Original project: VRPirates/rookie\n" +
-                                   $"Migrated to .NET 9 + Avalonia UI\n\n" +
-                                   $"Platform: {(PlatformHelper.IsWindows ? "Windows" : PlatformHelper.IsMacOs ? "macOS" : "Linux")}\n" +
-                                   $"Framework: .NET 9.0\n" +
-                                   $"UI Framework: Avalonia 11.2.0";
+                var aboutMessage = $"Version: {Updater.LocalVersion}\n\n" +
+                                   " - Software originally coded by rookie.wtf\n" +
+                                   " - Thanks to the VRP Mod Staff, data team, and anyone else we missed!\n" +
+                                   " - Thanks to VRP staff of the present and past: fenopy, Maxine, JarJarBlinkz\n" +
+                                   "        pmow, SytheZN, Roma/Rookie, Flow, Ivan, Kaladin, HarryEffinPotter, John, Sam Hoque\n\n" +
+                                   " - Additional Thanks and Credits:\n" +
+                                   " - -- rclone https://rclone.org/\n" +
+                                   " - -- 7zip https://www.7-zip.org/\n" +
+                                   " - -- ErikE: https://stackoverflow.com/users/57611/erike\n" +
+                                   " - -- Serge Weinstock (SergeUtils)\n" +
+                                   " - -- Mike Gold https://www.c-sharpcorner.com/members/mike-gold2\n";
 
                 if (_dialogService != null)
                 {
@@ -3173,79 +3272,84 @@ namespace AndroidSideloader.ViewModels
 
                 ProgressStatusText = "Processing dropped files...";
 
-                // Categorize files by extension and type
-                var apkFiles = new List<string>();
-                var obbFolders = new List<string>();
-                var installTxtFiles = new List<string>();
-
-                foreach (var path in filePaths)
+                // Categorize files by extension and type - run in background thread
+                var (apkFiles, obbFolders, installTxtFiles) = await Task.Run(() =>
                 {
-                    if (File.Exists(path))
-                    {
-                        // It's a file
-                        var ext = Path.GetExtension(path).ToLower();
-                        var fileName = Path.GetFileName(path).ToLower();
+                    var apkFiles = new List<string>();
+                    var obbFolders = new List<string>();
+                    var installTxtFiles = new List<string>();
 
-                        if (ext == ".apk")
+                    foreach (var path in filePaths)
+                    {
+                        if (File.Exists(path))
                         {
-                            apkFiles.Add(path);
-                        }
-                        else if (ext == ".obb")
-                        {
-                            // OBB file - add its parent directory
-                            var parentDir = Path.GetDirectoryName(path);
-                            if (!string.IsNullOrEmpty(parentDir) && !obbFolders.Contains(parentDir))
+                            // It's a file
+                            var ext = Path.GetExtension(path).ToLower();
+                            var fileName = Path.GetFileName(path).ToLower();
+
+                            if (ext == ".apk")
                             {
-                                obbFolders.Add(parentDir);
+                                apkFiles.Add(path);
+                            }
+                            else if (ext == ".obb")
+                            {
+                                // OBB file - add its parent directory
+                                var parentDir = Path.GetDirectoryName(path);
+                                if (!string.IsNullOrEmpty(parentDir) && !obbFolders.Contains(parentDir))
+                                {
+                                    obbFolders.Add(parentDir);
+                                }
+                            }
+                            else if (fileName == "install.txt")
+                            {
+                                installTxtFiles.Add(path);
                             }
                         }
-                        else if (fileName == "install.txt")
+                        else if (Directory.Exists(path))
                         {
-                            installTxtFiles.Add(path);
-                        }
-                    }
-                    else if (Directory.Exists(path))
-                    {
-                        // Check for install.txt in the directory (special install instructions)
-                        var installTxtPath = Path.Combine(path, "install.txt");
-                        if (File.Exists(installTxtPath))
-                        {
-                            installTxtFiles.Add(installTxtPath);
-                            continue; // Skip further processing - install.txt will handle it
-                        }
-
-                        // Check for APK files in directory
-                        var dirApkFiles = Directory.GetFiles(path, "*.apk", SearchOption.TopDirectoryOnly);
-                        apkFiles.AddRange(dirApkFiles);
-
-                        // Check for OBB files or subdirectories with package name pattern
-                        var obbFiles = Directory.GetFiles(path, "*.obb", SearchOption.AllDirectories);
-                        if (obbFiles.Length > 0)
-                        {
-                            // Add each unique directory containing OBB files
-                            foreach (var obbFile in obbFiles)
+                            // Check for install.txt in the directory (special install instructions)
+                            var installTxtPath = Path.Combine(path, "install.txt");
+                            if (File.Exists(installTxtPath))
                             {
-                                var obbDir = Path.GetDirectoryName(obbFile);
-                                if (!string.IsNullOrEmpty(obbDir) && !obbFolders.Contains(obbDir))
+                                installTxtFiles.Add(installTxtPath);
+                                continue; // Skip further processing - install.txt will handle it
+                            }
+
+                            // Check for APK files in directory
+                            var dirApkFiles = Directory.GetFiles(path, "*.apk", SearchOption.TopDirectoryOnly);
+                            apkFiles.AddRange(dirApkFiles);
+
+                            // Check for OBB files or subdirectories with package name pattern
+                            var obbFiles = Directory.GetFiles(path, "*.obb", SearchOption.AllDirectories);
+                            if (obbFiles.Length > 0)
+                            {
+                                // Add each unique directory containing OBB files
+                                foreach (var obbFile in obbFiles)
                                 {
-                                    obbFolders.Add(obbDir);
+                                    var obbDir = Path.GetDirectoryName(obbFile);
+                                    if (!string.IsNullOrEmpty(obbDir) && !obbFolders.Contains(obbDir))
+                                    {
+                                        obbFolders.Add(obbDir);
+                                    }
+                                }
+                            }
+
+                            // Check for subdirectories that look like package names (com.*.*)
+                            var subDirs = Directory.GetDirectories(path);
+                            foreach (var subDir in subDirs)
+                            {
+                                var dirName = Path.GetFileName(subDir);
+                                if (dirName.StartsWith("com.") && dirName.Contains("."))
+                                {
+                                    // Likely a package name directory with OBB files
+                                    obbFolders.Add(subDir);
                                 }
                             }
                         }
-
-                        // Check for subdirectories that look like package names (com.*.*)
-                        var subDirs = Directory.GetDirectories(path);
-                        foreach (var subDir in subDirs)
-                        {
-                            var dirName = Path.GetFileName(subDir);
-                            if (dirName.StartsWith("com.") && dirName.Contains("."))
-                            {
-                                // Likely a package name directory with OBB files
-                                obbFolders.Add(subDir);
-                            }
-                        }
                     }
-                }
+
+                    return (apkFiles, obbFolders, installTxtFiles);
+                });
 
                 // Show summary and confirmation
                 var summary = "Files dropped:\n\n";
@@ -3341,8 +3445,8 @@ namespace AndroidSideloader.ViewModels
                             var apkDir = Path.GetDirectoryName(apkPath);
                             if (!string.IsNullOrEmpty(apkDir))
                             {
-                                // Look for subdirectories with package name pattern
-                                var subDirs = Directory.GetDirectories(apkDir);
+                                // Look for subdirectories with package name pattern - in background
+                                var subDirs = await Task.Run(() => Directory.GetDirectories(apkDir));
                                 foreach (var subDir in subDirs)
                                 {
                                     var dirName = Path.GetFileName(subDir);
@@ -3879,10 +3983,18 @@ namespace AndroidSideloader.ViewModels
                             throw new Exception($"APK upload failed: {apkUploadResult.Error}");
                         }
 
-                        // Upload OBB if exists
-                        if (Directory.Exists(game.ObbPath))
+                        // Upload OBB if exists - check and get files in background
+                        var (hasObb, obbFiles) = await Task.Run(() =>
                         {
-                            var obbFiles = Directory.GetFiles(game.ObbPath, "*.*", SearchOption.AllDirectories);
+                            if (Directory.Exists(game.ObbPath))
+                            {
+                                return (true, Directory.GetFiles(game.ObbPath, "*.*", SearchOption.AllDirectories));
+                            }
+                            return (false, Array.Empty<string>());
+                        });
+
+                        if (hasObb)
+                        {
                             if (obbFiles.Length > 0)
                             {
                                 Logger.Log($"Uploading {obbFiles.Length} OBB file(s)...");
@@ -4138,8 +4250,10 @@ namespace AndroidSideloader.ViewModels
                 {
                     Logger.Log($"No thumbnail found for {SelectedGame.GameName}", LogLevel.Debug);
 
-                    // Optionally trigger download if remote is selected
-                    if (!string.IsNullOrEmpty(SelectedRemote) && !string.IsNullOrEmpty(SelectedGame.GameName))
+                    // Optionally trigger download if remote is selected (but not for public mirror)
+                    if (!string.IsNullOrEmpty(SelectedRemote) &&
+                        !string.IsNullOrEmpty(SelectedGame.GameName) &&
+                        !(Rclone.HasPublicConfig && SelectedRemote == "VRP Public Mirror"))
                     {
                         // Try to download the image in the background (don't await to avoid blocking)
                         await Task.Run(async () =>

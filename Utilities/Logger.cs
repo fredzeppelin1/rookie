@@ -23,10 +23,14 @@ namespace AndroidSideloader.Utilities
         {
             try
             {
-                // Set default log path if not already set
+                // Use path from settings (which is already set to full file path)
+                _logFilePath = Settings.CurrentLogPath;
+
+                // Set default log path if settings path is empty
                 if (string.IsNullOrEmpty(_logFilePath))
                 {
-                    _logFilePath = Path.Combine(Environment.CurrentDirectory, "debuglog.txt");
+                    _logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debuglog.txt");
+                    Settings.CurrentLogPath = _logFilePath;
                 }
 
                 // Create directory if it doesn't exist
@@ -45,7 +49,7 @@ namespace AndroidSideloader.Utilities
                     }
                 }
 
-                // Update settings with log path
+                // Update settings with log path and save
                 Settings.CurrentLogPath = _logFilePath;
                 Settings.Save();
 

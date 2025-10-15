@@ -417,20 +417,34 @@ namespace AndroidSideloader.Views
         {
             try
             {
-                var debugLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debuglog.txt");
+                var debugLogPath = Settings.CurrentLogPath;
                 if (File.Exists(debugLogPath))
                 {
                     if (PlatformHelper.IsWindows)
                     {
-                        Process.Start(new ProcessStartInfo { FileName = debugLogPath, UseShellExecute = true });
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = debugLogPath,
+                            UseShellExecute = true
+                        });
                     }
                     else if (PlatformHelper.IsMacOs)
                     {
-                        Process.Start("open", debugLogPath);
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "open",
+                            Arguments = $"\"{debugLogPath}\"",
+                            UseShellExecute = true
+                        });
                     }
                     else if (PlatformHelper.IsLinux)
                     {
-                        Process.Start("xdg-open", debugLogPath);
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "xdg-open",
+                            Arguments = $"\"{debugLogPath}\"",
+                            UseShellExecute = true
+                        });
                     }
 
                     Logger.Log("Opened debug log");
@@ -450,16 +464,11 @@ namespace AndroidSideloader.Views
         {
             try
             {
-                var debugLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debuglog.txt");
+                var debugLogPath = Settings.CurrentLogPath;
                 if (File.Exists(debugLogPath))
                 {
                     File.Delete(debugLogPath);
                     Logger.Log("Debug log reset");
-                }
-
-                if (File.Exists(Settings.CurrentLogPath))
-                {
-                    File.Delete(Settings.CurrentLogPath);
                 }
             }
             catch (Exception ex)
@@ -472,7 +481,7 @@ namespace AndroidSideloader.Views
         {
             try
             {
-                var debugLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debuglog.txt");
+                var debugLogPath = Settings.CurrentLogPath;
                 if (!File.Exists(debugLogPath))
                 {
                     Logger.Log("Debug log file not found", LogLevel.Warning);
@@ -581,7 +590,7 @@ namespace AndroidSideloader.Views
             try
             {
                 string pathToOpen = Settings.CustomBackupDir
-                    ? Path.Combine(Settings.BackupDir, "Rookie Backups")
+                    ? Settings.BackupDir
                     : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Rookie Backups");
 
                 // Create directory if it doesn't exist
@@ -607,17 +616,27 @@ namespace AndroidSideloader.Views
                     Process.Start(new ProcessStartInfo
                     {
                         FileName = "explorer.exe",
-                        Arguments = path,
+                        Arguments = $"\"{path}\"",
                         UseShellExecute = true
                     });
                 }
                 else if (PlatformHelper.IsMacOs)
                 {
-                    Process.Start("open", path);
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "open",
+                        Arguments = $"\"{path}\"",
+                        UseShellExecute = true
+                    });
                 }
                 else if (PlatformHelper.IsLinux)
                 {
-                    Process.Start("xdg-open", path);
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "xdg-open",
+                        Arguments = $"\"{path}\"",
+                        UseShellExecute = true
+                    });
                 }
 
                 Logger.Log($"Opened directory: {path}");

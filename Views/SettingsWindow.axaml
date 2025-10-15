@@ -3,7 +3,7 @@
         x:Class="AndroidSideloader.Views.SettingsWindow"
         Title="Settings"
         Width="350"
-        Height="760"
+        Height="740"
         WindowStartupLocation="CenterOwner"
         Background="#2d2d2d"
         CanResize="False">
@@ -13,29 +13,51 @@
         <Style Selector="CheckBox">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Margin" Value="8,1"/>
+            <Setter Property="Margin" Value="8,0"/>
         </Style>
 
         <!-- Button style to match original - subtle gradient buttons -->
         <Style Selector="Button">
-            <Setter Property="Background" Value="#404040"/>
+            <Setter Property="Background">
+                <SolidColorBrush Color="#202020"/>
+            </Setter>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="#555555"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="16,4"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="15,4"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="8,2"/>
+            <Setter Property="Margin" Value="14,4"/>
             <Setter Property="CornerRadius" Value="3"/>
         </Style>
 
         <Style Selector="Button:pointerover">
-            <Setter Property="Background" Value="#4a4a4a"/>
+            <Setter Property="Background">
+                <SolidColorBrush Color="#4a4a4a"/>
+            </Setter>
         </Style>
 
         <Style Selector="Button:pressed">
-            <Setter Property="Background" Value="#353535"/>
+            <Setter Property="Background">
+                <SolidColorBrush Color="#353535"/>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button /template/ ContentPresenter">
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+
+        <Style Selector="Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background">
+                <SolidColorBrush Color="#4a4a4a"/>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button:pressed /template/ ContentPresenter">
+            <Setter Property="Background">
+                <SolidColorBrush Color="#353535"/>
+            </Setter>
         </Style>
 
         <!-- TextBox style -->
@@ -54,9 +76,15 @@
         </Style>
     </Window.Styles>
 
-    <Grid Background="#2d2d2d">
-        <ScrollViewer>
-            <StackPanel Margin="0,5,0,5">
+    <Grid>
+        <Grid.Background>
+            <ImageBrush Source="avares://AndroidSideloader/Resources/pattern_cubes.png"
+                        TileMode="Tile"
+                        Stretch="UniformToFill"
+                        DestinationRect="0,0,1200,1200"/>
+        </Grid.Background>
+        <ScrollViewer Background="Transparent">
+            <StackPanel Margin="5,5,5,5" Background="Transparent">
                 <!-- All Checkboxes -->
                 <CheckBox Name="CheckForUpdatesCheckBox" Content="Check for Application Updates"/>
                 <CheckBox Name="UpdateConfigCheckBox" Content="Update Public Config Automatically"/>
@@ -73,18 +101,24 @@
                 <CheckBox Name="HideAdultContentCheckBox" Content="Hide Adult Content"/>
 
                 <!-- Bandwidth Limit Row -->
-                <StackPanel Orientation="Horizontal" Margin="8,6,8,6">
+                <StackPanel Orientation="Horizontal" Margin="14,6,14,6">
                     <TextBlock Text="Bandwidth Limit:" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="13"/>
                     <TextBox Name="BandwidthLimitTextBox" Width="100" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Text="MB/s" VerticalAlignment="Center" FontSize="13"/>
                 </StackPanel>
 
-                <!-- Large Action Buttons -->
-                <Button Name="ApplySettingsButton" Content="Apply Settings"/>
-                <Button Name="ResetSettingsButton" Content="Reset Settings"/>
+                <!-- Apply and Reset Settings on same line -->
+                <StackPanel Orientation="Horizontal" Margin="14,2,8,12">
+                    <Button Name="ApplySettingsButton" Content="Apply Settings" HorizontalAlignment="Left" Width="152" Margin="0"/>
+                    <Button Name="ResetSettingsButton" Content="Reset Settings" HorizontalAlignment="Left" Width="152" Margin="8,0,0,0"/>
+                </StackPanel>
+
+                <!-- Debug Log Buttons -->
                 <Button Name="OpenDebugLogButton" Content="Open Debug Log"/>
                 <Button Name="ResetDebugLogButton" Content="Reset Debug Log"/>
-                <Button Name="UploadDebugLogButton" Content="Upload Debug Log"/>
+                <Button Name="UploadDebugLogButton" Content="Upload Debug Log" Margin="14,2,14,10"/>
+
+                <!-- Directory Buttons -->
                 <Button Name="SetDownloadDirectoryButton" Content="Set Download Directory"/>
                 <Button Name="SetBackupDirectoryButton" Content="Set Backup Directory"/>
                 <Button Name="OpenDownloadDirectoryButton" Content="Open Download Directory"/>

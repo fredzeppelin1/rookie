@@ -247,6 +247,12 @@ namespace AndroidSideloader.Utilities
         /// </summary>
         public static string GetAvailableSpace()
         {
+            // Return formatted N/A if no device is connected
+            if (string.IsNullOrEmpty(DeviceId))
+            {
+                return "Total space: N/A\nUsed space: N/A\nFree space: N/A";
+            }
+
             var output = RunAdbCommandToString("shell df");
             var lines = output.Output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
 
@@ -271,7 +277,7 @@ namespace AndroidSideloader.Utilities
             }
 
             // Format matching original: "Total space: X.XXGB\nUsed space: X.XXGB\nFree space: X.XXGB"
-            return $"Total space: {((double)totalSize / 1000):0.00}GB\nUsed space: {((double)usedSize / 1000):0.00}GB\nFree space: {((double)freeSize / 1000):0.00}GB";
+            return $"Total space: {(double)totalSize / 1000:0.00}GB\nUsed space: {((double)usedSize / 1000):0.00}GB\nFree space: {((double)freeSize / 1000):0.00}GB";
         }
 
         /// <summary>

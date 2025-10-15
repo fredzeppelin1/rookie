@@ -2,17 +2,46 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:i="using:Avalonia.Xaml.Interactivity"
         xmlns:core="using:Avalonia.Xaml.Interactions.Core"
-        xmlns:vm="using:AndroidSideloader"
         xmlns:models="using:AndroidSideloader.Models"
         xmlns:viewModels="clr-namespace:AndroidSideloader.ViewModels"
         x:Class="AndroidSideloader.Views.MainWindow"
         x:DataType="viewModels:MainViewModel"
         Title="Rookie Sideloader"
-        Width="1200" Height="800"
+        Width="1200" Height="855"
         DragDrop.AllowDrop="True">
 
     <!-- Window-level styles - flat, minimal design matching original -->
     <Window.Styles>
+        <!-- Default button style -->
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#404040"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#4a4a4a"/>
+        </Style>
+
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="#353535"/>
+        </Style>
+
+        <Style Selector="Button /template/ ContentPresenter">
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+
+        <Style Selector="Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background">
+                <SolidColorBrush Color="#4a4a4a"/>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button:pressed /template/ ContentPresenter">
+            <Setter Property="Background">
+                <SolidColorBrush Color="#353535"/>
+            </Setter>
+        </Style>
+
         <!-- Flat button style - no borders, no background, just text -->
         <Style Selector="Button.nav-button">
             <Setter Property="Padding" Value="5"/>
@@ -34,7 +63,7 @@
         <Style Selector="Expander">
             <Setter Property="Padding" Value="2"/>
             <Setter Property="Margin" Value="0"/>
-            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Background" Value="#222222"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
         </Style>
         <!-- Expander header - flat, no background -->
@@ -49,10 +78,21 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Background">
+                <ImageBrush Source="avares://AndroidSideloader/Resources/pattern_herringbone.png"
+                            TileMode="Tile"
+                            Stretch="UniformToFill"
+                            DestinationRect="0,0,221,28"/>
+            </Setter>
         </Style>
         <!-- Expander header hover -->
         <Style Selector="Expander /template/ ToggleButton#PART_toggle:pointerover">
-            <Setter Property="Background" Value="#2a2a2a"/>
+            <Setter Property="Background">
+                <ImageBrush Source="avares://AndroidSideloader/Resources/pattern_herringbone.png"
+                            TileMode="Tile"
+                            Stretch="UniformToFill"
+                            DestinationRect="0,0,221,28"/>
+            </Setter>
         </Style>
         <!-- Remove padding from ToggleButton's Border -->
         <Style Selector="Expander /template/ ToggleButton#PART_toggle /template/ Border">
@@ -71,20 +111,48 @@
             <Setter Property="Margin" Value="0"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
         </Style>
+
+        <!-- Readonly textbox style - prevent hover background change -->
+        <Style Selector="TextBox:readonly">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <Style Selector="TextBox:readonly:pointerover">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <Style Selector="TextBox:readonly:pointerover /template/ Border">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <Style Selector="TextBox:readonly:focus /template/ Border">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <Style Selector="TextBox:readonly /template/ Border">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <!-- Disabled textbox style - prevent light grey background -->
+        <Style Selector="TextBox:disabled">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <Style Selector="TextBox:disabled /template/ Border">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <Style Selector="TextBox:disabled:pointerover /template/ Border">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="*,Auto" ColumnDefinitions="220,*">
         <!-- Left Navigation Panel -->
-        <Border Grid.RowSpan="2" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0">
-            <Border.Background>
-                <ImageBrush Source="avares://AndroidSideloader/Resources/Pattern.png"
-                            TileMode="Tile"
-                            Stretch="None"
-                            AlignmentX="Left"
-                            AlignmentY="Top"/>
-            </Border.Background>
-            <ScrollViewer>
-                <StackPanel Margin="0">
+        <Border Grid.RowSpan="2" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0" Background="#111111">
+            <ScrollViewer Background="Transparent">
+                <StackPanel Margin="0" Background="Transparent">
                     <Expander Header="DEVICE" IsExpanded="True">
                         <StackPanel Margin="0">
                             <Button Classes="nav-button" Content="RECONNECT DEVICE" Command="{Binding ReconnectDeviceCommand}"
@@ -118,15 +186,6 @@
                         </StackPanel>
                     </Expander>
 
-                    <Expander Header="UPLOAD TO MIRRORS" IsExpanded="False">
-                        <StackPanel Margin="0">
-                            <Button Classes="nav-button" Content="Extract Game for Upload" Command="{Binding ExtractGameForUploadCommand}"
-                                    ToolTip.Tip="Extract the selected game from your device and prepare it for uploading to VRPirates mirrors"/>
-                            <Button Classes="nav-button" Content="Process Upload Queue" Command="{Binding ProcessUploadQueueCommand}"
-                                    ToolTip.Tip="Upload all queued games to VRPirates mirrors"/>
-                        </StackPanel>
-                    </Expander>
-
                     <Expander Header="BACKUP / RESTORE" IsExpanded="True">
                         <StackPanel Margin="0">
                             <Button Classes="nav-button" Content="Backup with ADB" Command="{Binding BackupAdbCommand}"
@@ -153,22 +212,22 @@
                         </StackPanel>
                     </Expander>
 
-                    <Button Classes="nav-button" Content="⚙ SETTINGS" Command="{Binding SettingsCommand}" FontSize="16" Padding="0,4"
+                    <Button Classes="nav-button" Content="⚙ SETTINGS" Command="{Binding SettingsCommand}" FontSize="16" Padding="0,4" Background="#333333"
                             ToolTip.Tip="Rookie App Settings"/>
-                    <Button Classes="nav-button" Content="?  ABOUT" Command="{Binding AboutCommand}" FontSize="16" Padding="0,4"
+                    <Button Classes="nav-button" Content="?  ABOUT" Command="{Binding AboutCommand}" FontSize="16" Padding="0,4" Background="#333333"
                             ToolTip.Tip="About the Rookie App and it's amazing creators and contributors"/>
 
-                    <!-- Battery and Disk Space at bottom of menu -->
-                    <StackPanel Margin="5,10,5,5">
-                        <!-- Battery -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                            <Image Source="avares://AndroidSideloader/Resources/battery.png" Width="16" Height="16" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding BatteryLevelText}" Foreground="White" FontSize="11" VerticalAlignment="Center"/>
-                        </StackPanel>
+                    <!-- Disk Space and Battery at bottom of menu -->
+                    <Grid Margin="5,10,5,5" ColumnDefinitions="*,Auto">
+                        <!-- Disk Space on left (under About button) -->
+                        <TextBlock Grid.Column="0" Text="{Binding DiskSpaceText}" Foreground="White" FontSize="14" VerticalAlignment="Center" Padding="5" LineHeight="22"/>
 
-                        <!-- Disk Space - matches original format -->
-                        <TextBlock Text="{Binding DiskSpaceText}" Foreground="White" FontSize="10" Margin="0,0,0,0"/>
-                    </StackPanel>
+                        <!-- Battery on right -->
+                        <Grid Grid.Column="1" Width="40" Height="22" Margin="5,0,5,0">
+                            <Image Source="avares://AndroidSideloader/Resources/battery.png" Width="40" Height="22" Stretch="Uniform"/>
+                            <TextBlock Text="{Binding BatteryLevelText}" Foreground="White" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,0"/>
+                        </Grid>
+                    </Grid>
                 </StackPanel>
             </ScrollViewer>
         </Border>
@@ -178,10 +237,8 @@
             <Grid.Background>
                 <ImageBrush Source="avares://AndroidSideloader/Resources/pattern_cubes.png"
                             TileMode="Tile"
-                            Stretch="None"
-                            AlignmentX="Left"
-                            AlignmentY="Top"
-                            Opacity="0.15"/>
+                            Stretch="UniformToFill"
+                            DestinationRect="0,0,1200,1200"/>
             </Grid.Background>
             <!-- Top Toolbar -->
             <Grid Grid.Row="0" Margin="5" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
@@ -204,8 +261,8 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <Button Grid.Row="1" Grid.Column="1" Content="MOUNT" Command="{Binding MountCommand}" Padding="8,4" Width="75" Margin="0,0,10,0" HorizontalAlignment="Left"/>
-                    <!-- Column 2 is spacer that takes remaining space -->
+                    <!-- Column 1 is spacer that takes remaining space -->
+                    <Button Grid.Row="1" Grid.Column="2" Content="MOUNT" Command="{Binding MountCommand}" Padding="8,4" Width="75" Margin="0,0,10,0" HorizontalAlignment="Right"/>
                     <TextBlock Grid.Row="1" Grid.Column="3" Text="Mirror" Foreground="White" VerticalAlignment="Center" Margin="0,0,5,0"/>
                     <ComboBox Grid.Row="1" Grid.Column="4" Width="140" Margin="0,0,0,0"
                               ItemsSource="{Binding Remotes}"
@@ -218,8 +275,8 @@
                 <!-- Column 2: Disable Sideloading button -->
                 <Button Grid.Column="2" Content="Disable Sideloading" Command="{Binding DisableSideloadingCommand}" Padding="8,4" Margin="0,0,5,0" VerticalAlignment="Bottom"/>
 
-                <!-- Column 3: Games List button -->
-                <Button Grid.Column="3" Content="Games List" Command="{Binding GamesListCommand}" Padding="8,4" Margin="0,0,5,0" VerticalAlignment="Bottom"/>
+                <!-- Column 3: Games List toggle button (switches between all games and favorites) -->
+                <Button Grid.Column="3" Content="{Binding GamesListButtonText}" Command="{Binding GamesListCommand}" Padding="8,4" Margin="0,0,5,0" VerticalAlignment="Bottom"/>
 
                 <!-- Status indicators - stacked on far right (clickable to filter) -->
                 <StackPanel Grid.Column="4" Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Right">
@@ -242,7 +299,7 @@
             </Grid>
 
             <!-- Full-width Search Box -->
-            <TextBox Grid.Row="1" Watermark="Search" Margin="5,5,5,5" Text="{Binding SearchText}" VerticalAlignment="Center"/>
+            <TextBox Grid.Row="1" Watermark="Search" Margin="5,5,5,5" Text="{Binding SearchText}" VerticalAlignment="Center" Background="#1a1a1a" Foreground="White"/>
 
             <!-- Games DataGrid -->
             <DataGrid Grid.Row="2" Margin="5,0,5,5"
@@ -252,7 +309,8 @@
                       CanUserSortColumns="True"
                       CanUserReorderColumns="True"
                       CanUserResizeColumns="True"
-                      IsReadOnly="True">
+                      IsReadOnly="True"
+                      Background="#1a1a1a">
                 <DataGrid.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Toggle Favorite" Command="{Binding FavoriteCommand}">
@@ -271,20 +329,20 @@
                     </core:EventTriggerBehavior>
                 </i:Interaction.Behaviors>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Game Name" Width="150" Binding="{Binding GameName}" CanUserSort="True" x:DataType="models:GameItem"/>
-                    <DataGridTextColumn Header="Release Name" Width="250" Binding="{Binding ReleaseName}" CanUserSort="True" x:DataType="models:GameItem"/>
-                    <DataGridTextColumn Header="Package Name" Width="150" Binding="{Binding PackageName}" CanUserSort="True" x:DataType="models:GameItem"/>
-                    <DataGridTextColumn Header="Version" Width="75" Binding="{Binding Version}" SortMemberPath="VersionNumeric" CanUserSort="True" x:DataType="models:GameItem"/>
-                    <DataGridTextColumn Header="Last Updated" Width="145" Binding="{Binding LastUpdated}" CanUserSort="True" x:DataType="models:GameItem"/>
-                    <DataGridTextColumn Header="Size (MB)" Width="80" Binding="{Binding SizeMb}" SortMemberPath="SizeMBNumeric" CanUserSort="True" x:DataType="models:GameItem"/>
-                    <DataGridTextColumn Header="Popularity" Width="80" Binding="{Binding Popularity}" CanUserSort="True" x:DataType="models:GameItem"/>
+                    <DataGridTextColumn Header="Game Name" Width="3*" Binding="{Binding GameName}" CanUserSort="True" x:DataType="models:GameItem"/>
+                    <DataGridTextColumn Header="Release Name" Width="1*" Binding="{Binding ReleaseName}" CanUserSort="True" x:DataType="models:GameItem"/>
+                    <DataGridTextColumn Header="Package Name" Width="1*" Binding="{Binding PackageName}" CanUserSort="True" x:DataType="models:GameItem"/>
+                    <DataGridTextColumn Header="Version" Width="80" Binding="{Binding Version}" SortMemberPath="VersionNumeric" CanUserSort="True" x:DataType="models:GameItem"/>
+                    <DataGridTextColumn Header="Last Updated" Width="110" Binding="{Binding LastUpdated}" CanUserSort="True" x:DataType="models:GameItem"/>
+                    <DataGridTextColumn Header="Size (MB)" Width="90" Binding="{Binding SizeMb}" SortMemberPath="SizeMBNumeric" CanUserSort="True" x:DataType="models:GameItem"/>
+                    <DataGridTextColumn Header="Popularity" Width="90" Binding="{Binding Popularity}" CanUserSort="True" x:DataType="models:GameItem"/>
                 </DataGrid.Columns>
             </DataGrid>
 
             <!-- Progress Bar and Download Button Row -->
             <Grid Grid.Row="3" Margin="5,5,5,5" ColumnDefinitions="*,Auto,Auto">
                 <!-- Progress bar on left -->
-                <ProgressBar Grid.Column="0" Value="{Binding ProgressPercentage}" Maximum="100" Height="25" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <ProgressBar Grid.Column="0" Value="{Binding ProgressPercentage}" Maximum="100" Height="25" Margin="0,0,10,0" VerticalAlignment="Center" Background="#1a1a1a"/>
 
                 <!-- Cancel button -->
                 <Button Grid.Column="1"
@@ -312,8 +370,8 @@
                 <!-- Right Column: Queue and Notes Stacked -->
                 <Grid Grid.Column="1" RowDefinitions="*,*">
                     <!-- Queue ListBox -->
-                    <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1" Margin="0,0,0,2">
-                        <StackPanel>
+                    <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1" Margin="0,0,0,2" Background="#1a1a1a">
+                        <StackPanel Background="#1a1a1a">
                             <TextBlock Text="Download Queue" Foreground="White" Margin="1,2" FontWeight="Bold"/>
                             <ListBox ItemsSource="{Binding GamesQueue}"
                                      SelectedItem="{Binding SelectedQueueItem}"
@@ -330,10 +388,10 @@
                     </Border>
 
                     <!-- Release Notes TextBox -->
-                    <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" Margin="0,2,0,0">
-                        <StackPanel>
+                    <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" Margin="0,2,0,0" Background="#1a1a1a">
+                        <StackPanel Background="#1a1a1a">
                             <TextBlock Text="Release Notes" Foreground="White" Margin="1,2" FontWeight="Bold"/>
-                            <TextBox Background="#141414"
+                            <TextBox Background="Transparent"
                                      Foreground="White"
                                      IsReadOnly="True"
                                      AcceptsReturn="True"

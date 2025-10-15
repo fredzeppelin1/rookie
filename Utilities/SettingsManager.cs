@@ -54,7 +54,7 @@ namespace AndroidSideloader.Utilities
         private SettingsManager()
         {
             // Set default paths
-            CurrentLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+            CurrentLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debuglog.txt");
             AdbFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "platform-tools");
             AdbPath = Path.Combine(AdbFolder, GetAdbExecutableName());
             Uuid = Guid.NewGuid().ToString();

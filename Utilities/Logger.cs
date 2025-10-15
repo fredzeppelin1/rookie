@@ -1,58 +1,56 @@
-﻿using AndroidSideloader.Utilities;
-using System;
+﻿using System;
 using System.IO;
-using System.Text;
 
-namespace AndroidSideloader
+namespace AndroidSideloader.Utilities
 {
     public enum LogLevel
     {
-        DEBUG,
-        INFO,
-        WARNING,
-        ERROR,
-        TRACE,
-        FATAL
+        Debug,
+        Info,
+        Warning,
+        Error,
+        Trace,
+        Fatal
     }
 
     public static class Logger
     {
-        private static readonly SettingsManager settings = SettingsManager.Instance;
-        private static readonly object lockObject = new object();
-        private static string logFilePath = settings.CurrentLogPath;
+        private static readonly SettingsManager Settings = SettingsManager.Instance;
+        private static readonly object LockObject = new object();
+        private static string _logFilePath = Settings.CurrentLogPath;
 
         public static void Initialize()
         {
             try
             {
                 // Set default log path if not already set
-                if (string.IsNullOrEmpty(logFilePath))
+                if (string.IsNullOrEmpty(_logFilePath))
                 {
-                    logFilePath = Path.Combine(Environment.CurrentDirectory, "debuglog.txt");
+                    _logFilePath = Path.Combine(Environment.CurrentDirectory, "debuglog.txt");
                 }
 
                 // Create directory if it doesn't exist
-                string logDirectory = Path.GetDirectoryName(logFilePath);
+                var logDirectory = Path.GetDirectoryName(_logFilePath);
                 if (!string.IsNullOrEmpty(logDirectory) && !Directory.Exists(logDirectory))
                 {
                     Directory.CreateDirectory(logDirectory);
                 }
 
                 // Create log file if it doesn't exist
-                if (!File.Exists(logFilePath))
+                if (!File.Exists(_logFilePath))
                 {
-                    using (FileStream fs = File.Create(logFilePath))
+                    using (var fs = File.Create(_logFilePath))
                     {
                         // Create empty file
                     }
                 }
 
                 // Update settings with log path
-                settings.CurrentLogPath = logFilePath;
-                settings.Save();
+                Settings.CurrentLogPath = _logFilePath;
+                Settings.Save();
 
                 // Initial log entry
-                Log($"Logger initialized at: {DateTime.Now:hh:mmtt(UTC)}", LogLevel.INFO);
+                Log($"Logger initialized at: {DateTime.Now:hh:mmtt(UTC)}", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -60,26 +58,26 @@ namespace AndroidSideloader
             }
         }
 
-        public static bool Log(string text, LogLevel logLevel = LogLevel.INFO, bool ret = true)
+        public static bool Log(string text, LogLevel logLevel = LogLevel.Info, bool ret = true)
         {
             if (string.IsNullOrWhiteSpace(text) || text.Length <= 5)
                 return ret;
 
             // Initialize logger if not already initialized
-            if (string.IsNullOrEmpty(logFilePath))
+            if (string.IsNullOrEmpty(_logFilePath))
             {
                 Initialize();
             }
 
-            string time = DateTime.UtcNow.ToString("hh:mm:ss.fff tt (UTC): ");
-            string newline = text.Length > 40 && text.Contains("\n") ? "\n\n" : "\n";
-            string logEntry = time + "[" + logLevel.ToString().ToUpper() + "] [" + GetCallerInfo() + "] " + text + newline;
+            var time = DateTime.UtcNow.ToString("hh:mm:ss.fff tt (UTC): ");
+            var newline = text.Length > 40 && text.Contains("\n") ? "\n\n" : "\n";
+            var logEntry = time + "[" + logLevel.ToString().ToUpper() + "] [" + GetCallerInfo() + "] " + text + newline;
 
             try
             {
-                lock (lockObject)
+                lock (LockObject)
                 {
-                    File.AppendAllText(logFilePath, logEntry);
+                    File.AppendAllText(_logFilePath, logEntry);
                 }
             }
             catch (Exception ex)
@@ -92,14 +90,14 @@ namespace AndroidSideloader
 
         private static string GetCallerInfo()
         {
-            System.Diagnostics.StackTrace stackTrace = new System.Diagnostics.StackTrace(true);
+            var stackTrace = new System.Diagnostics.StackTrace(true);
             if (stackTrace.FrameCount >= 3)
             {
                 var frame = stackTrace.GetFrame(2);
                 var method = frame.GetMethod();
-                string className = method.DeclaringType?.Name;
-                string methodName = method.Name;
-                string callerInfo = $"{className}.{methodName}";
+                var className = method.DeclaringType?.Name;
+                var methodName = method.Name;
+                var callerInfo = $"{className}.{methodName}";
                 return callerInfo;
             }
 

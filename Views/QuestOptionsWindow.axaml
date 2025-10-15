@@ -1,0 +1,140 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AndroidSideloader.Views.QuestOptionsWindow"
+        Title="Quest Device Options"
+        Width="600"
+        Height="550"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0" Text="Quest Device Options" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Spacing="15">
+
+                <!-- Device Info Section -->
+                <TextBlock Text="Device Information" FontSize="18" FontWeight="SemiBold"/>
+
+                <StackPanel Spacing="10" Margin="10,0,0,0">
+                    <Grid ColumnDefinitions="150,*">
+                        <TextBlock Grid.Column="0" Text="Device ID:" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Name="DeviceIdTextBox" IsReadOnly="True" Watermark="Not connected"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="150,*">
+                        <TextBlock Grid.Column="0" Text="Wireless ADB:" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Name="WirelessStatusTextBox" IsReadOnly="True" Watermark="Unknown"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="150,*">
+                        <TextBlock Grid.Column="0" Text="Storage:" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Name="StorageTextBox" IsReadOnly="True" Watermark="Unknown"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="150,*">
+                        <TextBlock Grid.Column="0" Text="Battery Level:" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Name="BatteryTextBox" IsReadOnly="True" Watermark="Unknown"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="150,*">
+                        <TextBlock Grid.Column="0" Text="Device Model:" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Name="DeviceModelTextBox" IsReadOnly="True" Watermark="Unknown"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="150,*">
+                        <TextBlock Grid.Column="0" Text="Android Version:" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Name="AndroidVersionTextBox" IsReadOnly="True" Watermark="Unknown"/>
+                    </Grid>
+                </StackPanel>
+
+                <Separator/>
+
+                <!-- Device Actions Section -->
+                <TextBlock Text="Device Actions" FontSize="18" FontWeight="SemiBold"/>
+
+                <StackPanel Spacing="10" Margin="10,0,0,0">
+                    <TextBlock Text="Quick actions for connected device:" FontStyle="Italic"/>
+
+                    <WrapPanel>
+                        <Button Content="Refresh Device Info" Name="RefreshButton" Margin="0,0,10,5" Width="150"/>
+                        <Button Content="Enable Wireless ADB" Name="EnableWirelessButton" Margin="0,0,10,5" Width="150"/>
+                        <Button Content="Disable Wireless ADB" Name="DisableWirelessButton" Margin="0,0,10,5" Width="150"/>
+                        <Button Content="Toggle System Updates" Name="ToggleUpdatesButton" Margin="0,0,10,5" Width="150"/>
+                        <Button Content="List Installed Apps" Name="ListAppsButton" Margin="0,0,10,5" Width="150"/>
+                        <Button Content="Reboot Device" Name="RebootButton" Margin="0,0,10,5" Width="150"/>
+                        <Button Content="Reboot to Recovery" Name="RebootRecoveryButton" Margin="0,0,10,5" Width="150"/>
+                    </WrapPanel>
+                </StackPanel>
+
+                <Separator/>
+
+                <!-- Performance Tuning Section -->
+                <TextBlock Text="Performance Tuning" FontSize="18" FontWeight="SemiBold"/>
+
+                <StackPanel Spacing="10" Margin="10,0,0,0">
+                    <TextBlock Text="Advanced performance settings for your Quest device:" FontStyle="Italic"/>
+
+                    <!-- Refresh Rate -->
+                    <Grid ColumnDefinitions="200,*">
+                        <TextBlock Grid.Column="0" Text="Refresh Rate:" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" Name="RefreshRateComboBox" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Default (72Hz)"/>
+                            <ComboBoxItem Content="80Hz"/>
+                            <ComboBoxItem Content="90Hz"/>
+                            <ComboBoxItem Content="120Hz"/>
+                        </ComboBox>
+                    </Grid>
+
+                    <!-- CPU Level -->
+                    <Grid ColumnDefinitions="200,*">
+                        <TextBlock Grid.Column="0" Text="CPU Level (0-4):" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" Name="CpuLevelComboBox" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="0 (Power Save)"/>
+                            <ComboBoxItem Content="1"/>
+                            <ComboBoxItem Content="2 (Balanced)"/>
+                            <ComboBoxItem Content="3"/>
+                            <ComboBoxItem Content="4 (Performance)"/>
+                        </ComboBox>
+                    </Grid>
+
+                    <!-- GPU Level -->
+                    <Grid ColumnDefinitions="200,*">
+                        <TextBlock Grid.Column="0" Text="GPU Level (0-4):" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" Name="GpuLevelComboBox" Width="200" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="0 (Power Save)"/>
+                            <ComboBoxItem Content="1"/>
+                            <ComboBoxItem Content="2 (Balanced)"/>
+                            <ComboBoxItem Content="3"/>
+                            <ComboBoxItem Content="4 (Performance)"/>
+                        </ComboBox>
+                    </Grid>
+
+                    <!-- Texture Resolution -->
+                    <Grid ColumnDefinitions="200,*">
+                        <TextBlock Grid.Column="0" Text="Texture Resolution:" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Name="TextureResolutionTextBox" Width="200" HorizontalAlignment="Left" Watermark="e.g., 2048"/>
+                    </Grid>
+
+                    <TextBlock Text="Note: Higher values may improve quality but reduce performance." Foreground="Orange" FontStyle="Italic" TextWrapping="Wrap"/>
+
+                    <Button Content="Apply Performance Settings" Name="ApplyPerformanceButton" Width="200" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,20,0,0">
+            <Button Content="Close" Name="CloseButton" Width="100"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -1,4 +1,4 @@
-﻿namespace AndroidSideloader
+﻿namespace AndroidSideloader.Sideloader
 {
     public class ProcessOutput
     {

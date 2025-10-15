@@ -1,22 +1,25 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace AndroidSideloader.Models
 {
-    [JsonObject(MemberSerialization.OptIn)]
+    /// <summary>
+    /// Configuration model for public mirror access
+    /// Downloaded from vrp-public.json
+    /// </summary>
     public class PublicConfig
     {
-        [JsonProperty("baseUri")]
+        [JsonPropertyName("baseUri")]
         public string BaseUri { get; set; }
 
-        private string password;
+        private string _password;
 
-        [JsonProperty("password")]
+        [JsonPropertyName("password")]
         public string Password
         {
-            get => password;
-            set => password = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+            get => _password;
+            set => _password = Encoding.UTF8.GetString(Convert.FromBase64String(value));
         }
     }
 }

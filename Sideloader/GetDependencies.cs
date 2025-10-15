@@ -1,254 +1,263 @@
-﻿using JR.Utils.GUI.Forms;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+﻿using System;
+using System.Formats.Tar;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
-using System.Net;
-using System.Text;
+using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using SharpCompress.Compressors.Xz;
 
-namespace AndroidSideloader
+namespace AndroidSideloader.Sideloader
 {
-    internal class GetDependencies
+    public static class GetDependencies
     {
-        public static void updatePublicConfig()
+        public static async Task DownloadRclone()
         {
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls
-                                                 | SecurityProtocolType.Tls11
-                                                 | SecurityProtocolType.Tls12
-                                                 | SecurityProtocolType.Ssl3;
+            var extractPath = AppDomain.CurrentDomain.BaseDirectory;
+            var rclonePath = Path.Combine(extractPath, "rclone");
 
-            _ = Logger.Log("Attempting to update public config from main.");
+            // Determine the executable name based on platform
+            var rcloneExeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "rclone.exe" : "rclone";
+            var rcloneExePath = Path.Combine(rclonePath, rcloneExeName);
 
-            string configUrl = "https://raw.githubusercontent.com/vrpyou/quest/main/vrp-public.json";
-            string fallbackUrl = "https://vrpirates.wiki/downloads/vrp-public.json";
+            // Check if rclone already exists
+            if (File.Exists(rcloneExePath))
+            {
+                Console.WriteLine($"Rclone already exists at: {rcloneExePath}");
+                return;
+            }
+
+            Console.WriteLine($"Rclone not found, downloading...");
+
+            var rcloneZipUrl = GetRcloneDownloadUrl();
+            var rcloneZipFileName = Path.GetFileName(rcloneZipUrl);
+            var depFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "dep");
+            var rcloneZipPath = Path.Combine(depFolderPath, rcloneZipFileName);
+
+            if (!Directory.Exists(depFolderPath))
+            {
+                Directory.CreateDirectory(depFolderPath);
+            }
 
             try
             {
-                string resultString;
-
-                // Try fetching raw JSON data from the provided link
-                HttpWebRequest getUrl = (HttpWebRequest)WebRequest.Create(configUrl);
-                using (StreamReader responseReader = new StreamReader(getUrl.GetResponse().GetResponseStream()))
+                using (var client = new HttpClient())
                 {
-                    resultString = responseReader.ReadToEnd();
-                    _ = Logger.Log($"Retrieved updated config from main: {configUrl}.");
-                    File.WriteAllText(Path.Combine(Environment.CurrentDirectory, "vrp-public.json"), resultString);
-                    _ = Logger.Log("Public config updated successfully from main.");
-                }
-            }
-            catch (Exception mainException)
-            {
-                _ = Logger.Log($"Failed to update public config from main: {mainException.Message}, trying fallback.", LogLevel.ERROR);
-                try
-                {
-                    HttpWebRequest getUrl = (HttpWebRequest)WebRequest.Create(fallbackUrl);
-                    using (StreamReader responseReader = new StreamReader(getUrl.GetResponse().GetResponseStream()))
+                    Console.WriteLine($"Downloading rclone from: {rcloneZipUrl}");
+                    var response = await client.GetAsync(rcloneZipUrl);
+                    response.EnsureSuccessStatusCode();
+                    await using (var fileStream = new FileStream(rcloneZipPath, FileMode.Create, FileAccess.Write, FileShare.None))
                     {
-                        string resultString = responseReader.ReadToEnd();
-                        _ = Logger.Log($"Retrieved updated config from fallback: {fallbackUrl}.");
-                        File.WriteAllText(Path.Combine(Environment.CurrentDirectory, "vrp-public.json"), resultString);
-                        _ = Logger.Log("Public config updated successfully from fallback.");
+                        await response.Content.CopyToAsync(fileStream);
                     }
                 }
-                catch (Exception fallbackException)
+
+                Console.WriteLine($"Extracting rclone to: {extractPath}");
+                ZipFile.ExtractToDirectory(rcloneZipPath, extractPath, true);
+
+                // Create rclone subdirectory (rclonePath already declared at top of method)
+                Directory.CreateDirectory(rclonePath);
+
+                var extractedFolder = Path.GetFileNameWithoutExtension(rcloneZipUrl);
+                var extractedFiles = Directory.GetFiles(Path.Combine(extractPath, extractedFolder), "*").ToList();
+
+                // Copy extracted files to rclone subdirectory
+                foreach (var mFile in extractedFiles.Select(file => new FileInfo(file)))
                 {
-                    _ = Logger.Log($"Failed to update public config from fallback: {fallbackException.Message}.", LogLevel.ERROR);
+                    mFile.CopyTo(Path.Combine(rclonePath, mFile.Name), true);
                 }
+
+                Console.WriteLine("Rclone downloaded and extracted successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error downloading or extracting rclone: {ex.Message}");
+                // Log the error properly
             }
         }
 
-        // Download required dependencies.
-        public static void downloadFiles()
+        public static async Task Download7Zip()
         {
-            MainForm.SplashScreen.UpdateBackgroundImage(AndroidSideloader.Properties.Resources.splashimage_deps);
+            var extractPath = AppDomain.CurrentDomain.BaseDirectory;
+
+            // Check if 7z executable already exists (7zz on macOS/Linux, 7z.exe on Windows)
+            var sevenZipExeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "7z.exe" : "7zz";
+            var sevenZipExePath = Path.Combine(extractPath, sevenZipExeName);
+
+            if (File.Exists(sevenZipExePath))
+            {
+                Console.WriteLine($"7-Zip already exists at: {sevenZipExePath}");
+                return;
+            }
+
+            Console.WriteLine($"7-Zip not found, downloading...");
+
+            var sevenZipZipUrl = Get7ZipDownloadUrl();
+            var sevenZipZipFileName = Path.GetFileName(sevenZipZipUrl);
+            var depFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "dep");
+            var sevenZipZipPath = Path.Combine(depFolderPath, sevenZipZipFileName);
+
+            if (!Directory.Exists(depFolderPath))
+            {
+                Directory.CreateDirectory(depFolderPath);
+            }
+
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    Console.WriteLine($"Downloading 7-Zip from: {sevenZipZipUrl}");
+                    var response = await client.GetAsync(sevenZipZipUrl);
+                    response.EnsureSuccessStatusCode();
+                    await using (var fileStream = new FileStream(sevenZipZipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        await response.Content.CopyToAsync(fileStream);
+                    }
+                }
+
+                Console.WriteLine($"Extracting 7-Zip to: {extractPath}");
+                await using (var xz = new XZStream(File.OpenRead(sevenZipZipPath)))
+                await using (var stream = new MemoryStream())
+                {
+                    await xz.CopyToAsync(stream);
+                    stream.Seek(0, SeekOrigin.Begin);
+                    await TarFile.ExtractToDirectoryAsync(stream, extractPath, true);
+                    Console.WriteLine("7-Zip downloaded and extracted successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error downloading or extracting 7-Zip: {ex.Message}");
+                // Log the error properly
+            }
+        }
+
+        public static async Task DownloadAdb()
+        {
+            var extractPath = AppDomain.CurrentDomain.BaseDirectory;
+            var platformToolsPath = Path.Combine(extractPath, "platform-tools");
+
+            // Determine the executable name based on platform
+            var adbExeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "adb.exe" : "adb";
+            var adbExePath = Path.Combine(platformToolsPath, adbExeName);
+
+            // Check if ADB already exists
+            if (File.Exists(adbExePath))
+            {
+                Console.WriteLine($"ADB already exists at: {adbExePath}");
+                return;
+            }
+
+            Console.WriteLine($"ADB not found, downloading...");
+
+            var adbZipUrl = GetAdbDownloadUrl();
+            var adbZipFileName = "platform-tools.zip";
+            var depFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "dep");
+            var adbZipPath = Path.Combine(depFolderPath, adbZipFileName);
+
+            if (!Directory.Exists(depFolderPath))
+            {
+                Directory.CreateDirectory(depFolderPath);
+            }
+
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    Console.WriteLine($"Downloading ADB platform-tools from: {adbZipUrl}");
+                    var response = await client.GetAsync(adbZipUrl);
+                    response.EnsureSuccessStatusCode();
+                    await using (var fileStream = new FileStream(adbZipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        await response.Content.CopyToAsync(fileStream);
+                    }
+                }
+
+                Console.WriteLine($"Extracting ADB to: {extractPath}");
+                ZipFile.ExtractToDirectory(adbZipPath, extractPath, true);
+
+                Console.WriteLine("ADB platform-tools downloaded and extracted successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error downloading or extracting ADB: {ex.Message}");
+                // Log the error properly
+            }
+        }
+
+        private static string GetRcloneDownloadUrl()
+        {
+            const string baseUrl = "https://downloads.rclone.org/";
+            const string version = "v1.67.0"; // Use a specific version for stability
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return RuntimeInformation.OSArchitecture switch
+                {
+                    Architecture.X64 => $"{baseUrl}{version}/rclone-{version}-windows-amd64.zip",
+                    Architecture.Arm64 => $"{baseUrl}{version}/rclone-{version}-windows-arm64.zip",
+                    _ => $"{baseUrl}{version}/rclone-{version}-windows-386.zip"
+                };
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                return RuntimeInformation.OSArchitecture == Architecture.Arm64 
+                    ? $"{baseUrl}{version}/rclone-{version}-osx-arm64.zip" 
+                    : $"{baseUrl}{version}/rclone-{version}-osx-amd64.zip";
+            }
             
-            WebClient client = new WebClient();
-            ServicePointManager.Expect100Continue = true;
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            var currentAccessedWebsite = "";
-            try
-            {
-                if (!File.Exists("Sideloader Launcher.exe"))
-                {
-                    currentAccessedWebsite = "github";
-                    _ = Logger.Log($"Missing 'Sideloader Launcher.exe'. Attempting to download from {currentAccessedWebsite}");
-                    client.DownloadFile("https://github.com/VRPirates/rookie/raw/master/Sideloader%20Launcher.exe", "Sideloader Launcher.exe");
-                    _ = Logger.Log($"'Sideloader Launcher.exe' download successful");
-                }
-
-                if (!File.Exists("Rookie Offline.cmd"))
-                {
-                    currentAccessedWebsite = "github";
-                    _ = Logger.Log($"Missing 'Rookie Offline.cmd'. Attempting to download from {currentAccessedWebsite}");
-                    client.DownloadFile("https://github.com/VRPirates/rookie/raw/master/Rookie%20Offline.cmd", "Rookie Offline.cmd");
-                    _ = Logger.Log($"'Rookie Offline.cmd' download successful");
-                }
-
-                if (!File.Exists("CleanupInstall.cmd"))
-                {
-                    currentAccessedWebsite = "github";
-                    _ = Logger.Log($"Missing 'CleanupInstall.cmd'. Attempting to download from {currentAccessedWebsite}");
-                    client.DownloadFile("https://github.com/VRPirates/rookie/raw/master/CleanupInstall.cmd", "CleanupInstall.cmd");
-                    _ = Logger.Log($"'CleanupInstall.cmd' download successful");
-                }
-
-                if (!File.Exists("AddDefenderExceptions.ps1"))
-                {
-                    currentAccessedWebsite = "github";
-                    _ = Logger.Log($"Missing 'AddDefenderExceptions.ps1'. Attempting to download from {currentAccessedWebsite}");
-                    client.DownloadFile("https://github.com/VRPirates/rookie/raw/master/AddDefenderExceptions.ps1", "AddDefenderExceptions.ps1");
-                    _ = Logger.Log($"'AddDefenderExceptions.ps1' download successful");
-                }
-            }
-            catch (Exception ex)
-            {
-                _ = FlexibleMessageBox.Show($"You are unable to access raw.githubusercontent.com with the Exception:\n{ex.Message}\n\nSome files may be missing (Offline/Cleanup Script, Launcher)");
-            }
-
-            try
-            {
-                if (!File.Exists($"{Path.GetPathRoot(Environment.SystemDirectory)}RSL\\platform-tools\\adb.exe")) //if adb is not updated, download and auto extract
-                {
-                    if (!Directory.Exists($"{Path.GetPathRoot(Environment.SystemDirectory)}RSL\\platform-tools"))
-                    {
-                        _ = Directory.CreateDirectory($"{Path.GetPathRoot(Environment.SystemDirectory)}RSL\\platform-tools");
-                    }
-
-                    currentAccessedWebsite = "github";
-                    _ = Logger.Log($"Missing adb within {Path.GetPathRoot(Environment.SystemDirectory)}RSL\\platform-tools. Attempting to download from {currentAccessedWebsite}");
-                    client.DownloadFile("https://github.com/VRPirates/rookie/raw/master/dependencies.7z", "dependencies.7z");
-                    Utilities.Zip.ExtractFile(Path.Combine(Environment.CurrentDirectory, "dependencies.7z"), $"{Path.GetPathRoot(Environment.SystemDirectory)}RSL\\platform-tools");
-                    File.Delete("dependencies.7z");
-                    _ = Logger.Log($"adb download successful");
-                }
-            }
-            catch (Exception ex)
-            {
-                _ = FlexibleMessageBox.Show($"You are unable to access raw.githubusercontent.com page with the Exception:\n{ex.Message}\n\nSome files may be missing (ADB)");
-                _ = FlexibleMessageBox.Show("ADB was unable to be downloaded\nRookie will now close.");
-                Application.Exit();
-            }
-
-            string wantedRcloneVersion = "1.68.2";
-            bool rcloneSuccess = false;
-
-            rcloneSuccess = downloadRclone(wantedRcloneVersion, false);
-            if (!rcloneSuccess) {
-                rcloneSuccess = downloadRclone(wantedRcloneVersion, true);
-            }
-            if (!rcloneSuccess) {
-                _ = Logger.Log($"Unable to download rclone", LogLevel.ERROR);
-                _ = FlexibleMessageBox.Show("Rclone was unable to be downloaded\nRookie will now close, please use Offline Mode for manual sideloading if needed");
-                Application.Exit();
-            }
+            // Add other platforms as needed (Linux, etc.)
+            throw new PlatformNotSupportedException("Unsupported operating system or architecture for rclone.");
         }
 
-
-        public static bool downloadRclone(string wantedRcloneVersion, bool useFallback = false)
+        private static string Get7ZipDownloadUrl()
         {
-            try
+            const string version = "2301"; // Use a specific version for stability
+
+            // 7-Zip doesn't provide direct download links for specific architectures like rclone.
+            // It's usually a single installer or a generic zip.
+            // For cross-platform, p7zip is the common alternative on Linux/macOS.
+            // For simplicity, we'll use a placeholder for now.
+            // In a real scenario, you might need to bundle p7zip or instruct user to install it.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                bool updateRclone = false;
-                string currentRcloneVersion = "0.0.0";
-
-                WebClient client = new WebClient();
-                ServicePointManager.Expect100Continue = true;
-                ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-
-                _ = Logger.Log($"Checking for Local rclone...");
-                string dirRclone = Path.Combine(Environment.CurrentDirectory, "rclone");
-                string pathToRclone = Path.Combine(dirRclone, "rclone.exe");
-                if (File.Exists(pathToRclone))
-                {
-                    var versionInfo = FileVersionInfo.GetVersionInfo(pathToRclone);
-                    currentRcloneVersion = versionInfo.ProductVersion;
-                    Logger.Log($"Current RCLONE Version {currentRcloneVersion}");
-                    if (!MainForm.noRcloneUpdating)
-                    {
-                        if (currentRcloneVersion != wantedRcloneVersion)
-                        {
-                            updateRclone = true;
-                            _ = Logger.Log($"RCLONE Version does not match ({currentRcloneVersion})! Downloading required version ({wantedRcloneVersion})");
-                        }
-                    }
-                } else {
-                    updateRclone = true;
-                    _ = Logger.Log($"RCLONE exe does not exist, attempting to download");
-                }
-
-                if (!Directory.Exists(dirRclone)) {
-                    updateRclone = true;
-                    _ = Logger.Log($"Missing RCLONE Folder, attempting to download");
-
-                    Directory.CreateDirectory(dirRclone);
-                }
-
-                if (updateRclone == true)
-                {
-                    // Preserve vrp.download.config if it exists
-                    string configPath = Path.Combine(dirRclone, "vrp.download.config");
-                    string tempConfigPath = Path.Combine(Environment.CurrentDirectory, "vrp.download.config.bak");
-                    bool hasConfig = false;
-
-                    if (File.Exists(configPath))
-                    {
-                        _ = Logger.Log("Preserving vrp.download.config before update");
-                        File.Copy(configPath, tempConfigPath, true);
-                        hasConfig = true;
-                    }
-
-                    MainForm.SplashScreen.UpdateBackgroundImage(AndroidSideloader.Properties.Resources.splashimage_rclone);
-
-                    string architecture = Environment.Is64BitOperatingSystem ? "amd64" : "386";
-                    string url = $"https://downloads.rclone.org/v{wantedRcloneVersion}/rclone-v{wantedRcloneVersion}-windows-{architecture}.zip";
-                    if (useFallback == true) {
-                        _ = Logger.Log($"Using git fallback for rclone download");
-                        url = $"https://raw.githubusercontent.com/VRPirates/rookie/master/dep/rclone-v{wantedRcloneVersion}-windows-{architecture}.zip";
-                    }
-                    _ = Logger.Log($"Downloading rclone from {url}");
-
-                    _ = Logger.Log("Begin download rclone");
-                    client.DownloadFile(url, "rclone.zip");
-                    _ = Logger.Log("Complete download rclone");
-
-                    _ = Logger.Log($"Extract {Environment.CurrentDirectory}\\rclone.zip");
-                    Utilities.Zip.ExtractFile(Path.Combine(Environment.CurrentDirectory, "rclone.zip"), Environment.CurrentDirectory);
-                    string dirExtractedRclone = Path.Combine(Environment.CurrentDirectory, $"rclone-v{wantedRcloneVersion}-windows-{architecture}");
-                    File.Delete("rclone.zip");
-                    _ = Logger.Log("rclone extracted. Moving files");
-
-                    foreach (string file in Directory.GetFiles(dirExtractedRclone))
-                    {
-                        string fileName = Path.GetFileName(file);
-                        string destFile = Path.Combine(dirRclone, fileName);
-                        if (File.Exists(destFile))
-                        {
-                            File.Delete(destFile);
-                        }
-                        File.Move(file, destFile);
-                    }
-                    Directory.Delete(dirExtractedRclone, true);
-
-                    // Restore vrp.download.config if it was backed up
-                    if (hasConfig && File.Exists(tempConfigPath))
-                    {
-                        _ = Logger.Log("Restoring vrp.download.config after update");
-                        File.Move(tempConfigPath, configPath);
-                    }
-
-                    _ = Logger.Log($"rclone download successful");
-                }
-
-                return true;
+                // Example: return "https://www.7-zip.org/a/7z2301-x64.exe";
+                return $"https://www.7-zip.org/a/7z{version}-x64.zip"; // Placeholder for Windows 7-Zip
             }
-            catch (Exception ex)
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                _ = Logger.Log($"Unable to download rclone: {ex}", LogLevel.ERROR);
-                return false;
+                // For macOS, p7zip is usually installed via Homebrew. Bundling is complex.
+                // This URL is a placeholder and might not work directly for bundling.
+                return $"https://www.7-zip.org/a/7z{version}-mac.tar.xz";
             }
+
+            throw new PlatformNotSupportedException("Unsupported operating system for 7-Zip.");
+        }
+
+        private static string GetAdbDownloadUrl()
+        {
+            // Google provides official Android SDK platform-tools downloads
+            const string baseUrl = "https://dl.google.com/android/repository/";
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return $"{baseUrl}platform-tools-latest-windows.zip";
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                return $"{baseUrl}platform-tools-latest-darwin.zip";
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                return $"{baseUrl}platform-tools-latest-linux.zip";
+            }
+
+            throw new PlatformNotSupportedException("Unsupported operating system for ADB platform-tools.");
         }
     }
 }

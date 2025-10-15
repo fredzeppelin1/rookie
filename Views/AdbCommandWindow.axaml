@@ -1,0 +1,52 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AndroidSideloader.Views.AdbCommandWindow"
+        Title="Run ADB Command"
+        Width="700"
+        Height="500"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <!-- Header -->
+        <TextBlock Grid.Row="0" Text="Run ADB Command" FontSize="24" FontWeight="Bold" Margin="0,0,0,20"/>
+
+        <!-- Command Input -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+            <TextBox Name="CommandTextBox"
+                     Grid.Column="0"
+                     Watermark="Enter ADB command (e.g., shell pm list packages)"
+                     Margin="0,0,10,0"/>
+            <Button Name="SendButton"
+                    Grid.Column="1"
+                    Content="Send"
+                    Width="100"
+                    Padding="10,5"/>
+        </Grid>
+
+        <!-- Quick Actions -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="10" Margin="0,0,0,15">
+            <TextBlock Text="Quick Actions:" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button Name="ToggleUpdatesButton" Content="Toggle System Updates" Padding="10,5"/>
+            <Button Name="ClearButton" Content="Clear Output" Padding="10,5"/>
+        </StackPanel>
+
+        <!-- Output -->
+        <Border Grid.Row="3" BorderBrush="Gray" BorderThickness="1" Margin="0,0,0,15">
+            <ScrollViewer>
+                <TextBox Name="OutputTextBox"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="True"
+                         Background="#141414"
+                         Foreground="#00FF00"
+                         FontFamily="Courier New"
+                         BorderThickness="0"
+                         Watermark="Command output will appear here..."/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Close Button -->
+        <Button Grid.Row="4" Name="CloseButton" Content="Close" Width="100" HorizontalAlignment="Right"/>
+    </Grid>
+</Window>

@@ -1,8 +1,12 @@
 *.pdb
 *.xml
 *.xsd
-AndroidSideloader.csproj.user
+*.csproj.user
+*.DotSettings.user
 
 .vs/
+.idea/
+.claude/
 bin/
+obj/
 packages/

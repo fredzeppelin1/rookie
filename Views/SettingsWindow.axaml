@@ -1,0 +1,95 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AndroidSideloader.Views.SettingsWindow"
+        Title="Settings"
+        Width="350"
+        Height="760"
+        WindowStartupLocation="CenterOwner"
+        Background="#2d2d2d"
+        CanResize="False">
+
+    <Window.Styles>
+        <!-- Checkbox style to match original -->
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="8,1"/>
+        </Style>
+
+        <!-- Button style to match original - subtle gradient buttons -->
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#404040"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="16,4"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="8,2"/>
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#4a4a4a"/>
+        </Style>
+
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="#353535"/>
+        </Style>
+
+        <!-- TextBox style -->
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="#1a1a1a"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- TextBlock style -->
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid Background="#2d2d2d">
+        <ScrollViewer>
+            <StackPanel Margin="0,5,0,5">
+                <!-- All Checkboxes -->
+                <CheckBox Name="CheckForUpdatesCheckBox" Content="Check for Application Updates"/>
+                <CheckBox Name="UpdateConfigCheckBox" Content="Update Public Config Automatically"/>
+                <CheckBox Name="NoDeviceModeBox" Content="Disable Sideloading (Installing)"/>
+                <CheckBox Name="DeleteAfterInstallCheckBox" Content="Delete games after download and install"/>
+                <CheckBox Name="TrailersOnCheckBox" Content="Use Trailers instead of Thumbnails"/>
+                <CheckBox Name="SingleThreadCheckBox" Content="Enable Single-Threading"/>
+                <CheckBox Name="UseDownloadedFilesCheckBox" Content="Don't Prompt to Re-Download"/>
+                <CheckBox Name="AutoReinstallCheckBox" Content="Enable auto reinstall upon install failure"/>
+                <CheckBox Name="EnableMessageBoxesCheckBox" Content="Enable Message Boxes on task completed"/>
+                <CheckBox Name="UserJsonOnGameInstallCheckBox" Content="Push random user json on install"/>
+                <CheckBox Name="BMBFCheckBox" Content="Enable BMBF song zips drag and drop"/>
+                <CheckBox Name="VirtualFilesystemCompatibilityCheckBox" Content="Enable Virtual Filesystem Compatibility"/>
+                <CheckBox Name="HideAdultContentCheckBox" Content="Hide Adult Content"/>
+
+                <!-- Bandwidth Limit Row -->
+                <StackPanel Orientation="Horizontal" Margin="8,6,8,6">
+                    <TextBlock Text="Bandwidth Limit:" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="13"/>
+                    <TextBox Name="BandwidthLimitTextBox" Width="100" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="MB/s" VerticalAlignment="Center" FontSize="13"/>
+                </StackPanel>
+
+                <!-- Large Action Buttons -->
+                <Button Name="ApplySettingsButton" Content="Apply Settings"/>
+                <Button Name="ResetSettingsButton" Content="Reset Settings"/>
+                <Button Name="OpenDebugLogButton" Content="Open Debug Log"/>
+                <Button Name="ResetDebugLogButton" Content="Reset Debug Log"/>
+                <Button Name="UploadDebugLogButton" Content="Upload Debug Log"/>
+                <Button Name="SetDownloadDirectoryButton" Content="Set Download Directory"/>
+                <Button Name="SetBackupDirectoryButton" Content="Set Backup Directory"/>
+                <Button Name="OpenDownloadDirectoryButton" Content="Open Download Directory"/>
+                <Button Name="OpenBackupDirectoryButton" Content="Open Backup Directory"/>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

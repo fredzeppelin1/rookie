@@ -1,292 +1,267 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System;
+﻿using System;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
-using System.Linq;
+using System.Text.Json;
 
 namespace AndroidSideloader.Utilities
 {
-    public class SettingsManager : IDisposable
+    public class SettingsManager
     {
-        private static readonly Lazy<SettingsManager> _instance = new Lazy<SettingsManager>(() => new SettingsManager());
-        private static readonly string settingsFilePath = Path.Combine(
-            Environment.CurrentDirectory,
-            "settings.json");
+        public static SettingsManager Instance { get; } = new();
 
-        // Custom converters for special types
-        public class FontConverter : JsonConverter<Font>
-        {
-            public override Font ReadJson(JsonReader reader, Type objectType, Font existingValue, bool hasExistingValue, JsonSerializer serializer)
-            {
-                var jo = JObject.Load(reader);
-                string fontFamily = jo["FontFamily"]?.Value<string>() ?? "Microsoft Sans Serif";
-                float fontSize = jo["Size"]?.Value<float>() ?? 11.25f;
-                return new Font(fontFamily, fontSize);
-            }
+        // Logging
+        public string CurrentLogPath { get; set; }
+        public string Uuid { get; set; }
 
-            public override void WriteJson(JsonWriter writer, Font value, JsonSerializer serializer)
-            {
-                writer.WriteStartObject();
-                writer.WritePropertyName("FontFamily");
-                writer.WriteValue(value.FontFamily.Name);
-                writer.WritePropertyName("Size");
-                writer.WriteValue(value.Size);
-                writer.WriteEndObject();
-            }
-        }
+        // ADB Configuration
+        public string AdbFolder { get; set; }
+        public string AdbPath { get; set; }
+        public bool AdbDebugWarned { get; set; }
+        public bool NodeviceMode { get; set; }
+        public bool AutoReinstall { get; set; }
+        public bool Wired { get; set; }
+        public string IpAddress { get; set; }
 
-        public class ColorConverter : JsonConverter<Color>
-        {
-            public override Color ReadJson(JsonReader reader, Type objectType, Color existingValue, bool hasExistingValue, JsonSerializer serializer)
-            {
-                var jo = JObject.Load(reader);
-                int a = jo["A"]?.Value<int>() ?? 255;
-                int r = jo["R"]?.Value<int>() ?? 0;
-                int g = jo["G"]?.Value<int>() ?? 0;
-                int b = jo["B"]?.Value<int>() ?? 0;
-                return Color.FromArgb(a, r, g, b);
-            }
+        // Download Configuration
+        public string DownloadDir { get; set; }
+        public bool CustomDownloadDir { get; set; }
+        public string MainDir { get; set; }
+        public string BackupDir { get; set; }
+        public bool CustomBackupDir { get; set; }
 
-            public override void WriteJson(JsonWriter writer, Color value, JsonSerializer serializer)
-            {
-                writer.WriteStartObject();
-                writer.WritePropertyName("A");
-                writer.WriteValue(value.A);
-                writer.WritePropertyName("R");
-                writer.WriteValue(value.R);
-                writer.WritePropertyName("G");
-                writer.WriteValue(value.G);
-                writer.WritePropertyName("B");
-                writer.WriteValue(value.B);
-                writer.WriteEndObject();
-            }
-        }
+        // RCLONE Configuration
+        public int BandwidthLimit { get; set; } // In MB/s, 0 = unlimited
+        public bool CheckForUpdates { get; set; }
+        public bool EnableMessageBoxes { get; set; }
+        public bool DeleteAllAfterInstall { get; set; }
+        public bool AutoUpdateConfig { get; set; }
+        public bool CreatePubMirrorFile { get; set; }
+        public bool UserJsonOnGameInstall { get; set; }
+        public bool UseDownloadedFiles { get; set; }
+        public bool TrailersOn { get; set; }
+        public bool SingleThreadMode { get; set; }
+        public bool BmbfChecked { get; set; }
+        public bool VirtualFilesystemCompatibility { get; set; }
+        public bool HideAdultContent { get; set; }
 
-        [JsonConverter(typeof(FontConverter))]
-        public Font FontStyle { get; set; } = new Font("Microsoft Sans Serif", 11.25f);
-        [JsonConverter(typeof(FontConverter))]
-        public Font BigFontStyle { get; set; } = new Font("Microsoft Sans Serif", 14f);
-        [JsonConverter(typeof(ColorConverter))]
-        public Color FontColor { get; set; } = Color.White;
-        [JsonConverter(typeof(ColorConverter))]
-        public Color ComboBoxColor { get; set; } = Color.FromArgb(25, 25, 25);
-        [JsonConverter(typeof(ColorConverter))]
-        public Color SubButtonColor { get; set; } = Color.FromArgb(25, 25, 25);
-        [JsonConverter(typeof(ColorConverter))]
-        public Color TextBoxColor { get; set; } = Color.FromArgb(25, 25, 25);
-        [JsonConverter(typeof(ColorConverter))]
-        public Color ButtonColor { get; set; } = Color.Black;
-        [JsonConverter(typeof(ColorConverter))]
-        public Color BackColor { get; set; } = Color.FromArgb(1, 1, 1);
-        public bool CheckForUpdates { get; set; } = true;
-        public bool EnableMessageBoxes { get; set; } = true;
-        public bool FirstRun { get; set; } = true;
-        public bool DeleteAllAfterInstall { get; set; } = true;
-        public bool AutoUpdateConfig { get; set; } = true;
-        public bool UserJsonOnGameInstall { get; set; } = false;
-        public bool CallUpgrade { get; set; } = true;
-        public string BackPicturePath { get; set; } = string.Empty;
-        public bool SpoofGames { get; set; } = false;
-        public bool ResignAPKs { get; set; } = false;
-        public string IPAddress { get; set; } = string.Empty;
-        public string InstalledApps { get; set; } = string.Empty;
-        public string ADBPath { get; set; } = string.Empty;
-        public string MainDir { get; set; } = string.Empty;
-        public bool Delsh { get; set; } = false;
-        public string CurrPckg { get; set; } = string.Empty;
-        public string ADBFolder { get; set; } = string.Empty;
-        public bool WirelessADB { get; set; } = false;
-        public string CurrentGamename { get; set; } = string.Empty;
-        public bool PackageNameToCB { get; set; } = false;
-        public bool DownUpHeld { get; set; } = false;
-        public string CurrentLogPath { get; set; } = string.Empty;
-        public string CurrentLogName { get; set; } = string.Empty;
-        public string CurrentCrashPath { get; set; } = string.Empty;
-        public string CurrentCrashName { get; set; } = string.Empty;
-        public bool AdbDebugWarned { get; set; } = false;
-        public bool NodeviceMode { get; set; } = false;
-        public bool BMBFChecked { get; set; } = true;
-        public string GamesList { get; set; } = string.Empty;
-        public bool UploadedGameList { get; set; } = false;
-        public string GlobalUsername { get; set; } = string.Empty;
-        public DateTime LastTimeShared { get; set; } = new DateTime(1969, 4, 20, 16, 20, 0);
-        public bool AutoReinstall { get; set; } = false;
-        public string NonAppPackages { get; set; } = string.Empty;
-        public DateTime LastLaunch { get; set; } = new DateTime(1969, 4, 20, 16, 20, 0);
-        public string SubmittedUpdates { get; set; } = string.Empty;
-        public bool ListUpped { get; set; } = false;
-        public DateTime LastLaunch2 { get; set; } = new DateTime(1969, 4, 20, 16, 20, 0);
-        public bool Wired { get; set; } = false;
-        public string AppPackages { get; set; } = string.Empty;
-        public bool TrailersOn { get; set; } = false;
-        public string DownloadDir { get; set; } = string.Empty;
-        public bool CustomDownloadDir { get; set; } = false;
-        public bool CustomBackupDir { get; set; } = false;
-        public string BackupDir { get; set; } = string.Empty;
-        public bool SingleThreadMode { get; set; } = true;
-        public bool VirtualFilesystemCompatibility { get; set; } = false;
-        public bool UpdateSettings { get; set; } = true;
-        public string UUID { get; set; } = Guid.NewGuid().ToString();
-        public bool CreatePubMirrorFile { get; set; } = true;
-        public bool UseDownloadedFiles { get; set; } = false;
-        public float BandwidthLimit { get; set; } = 0f;
-        public bool HideAdultContent { get; set; } = false;
-        public string[] FavoritedGames { get; set; } = new string[0];
+        // UI Configuration
+        public bool PackageNameToCb { get; set; } // Copy package name to clipboard on game selection
 
+        // Favorites - stored as package names
+        public System.Collections.Generic.HashSet<string> FavoriteGames { get; set; }
+
+        // Constructor with defaults
         private SettingsManager()
         {
+            // Set default paths
+            CurrentLogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+            AdbFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "platform-tools");
+            AdbPath = Path.Combine(AdbFolder, GetAdbExecutableName());
+            Uuid = Guid.NewGuid().ToString();
+            AdbDebugWarned = false;
+            NodeviceMode = false;
+            AutoReinstall = false;
+            Wired = true;
+            IpAddress = string.Empty;
+
+            // Download defaults - matches original behavior (portable app style)
+            DownloadDir = AppDomain.CurrentDomain.BaseDirectory;
+            CustomDownloadDir = false;
+            MainDir = AppDomain.CurrentDomain.BaseDirectory;
+            BackupDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Rookie Backups");
+            CustomBackupDir = false;
+
+            // RCLONE defaults
+            BandwidthLimit = 0; // Unlimited
+            CheckForUpdates = true;
+            EnableMessageBoxes = true;
+            DeleteAllAfterInstall = false;
+            AutoUpdateConfig = true;
+            CreatePubMirrorFile = true;
+            UserJsonOnGameInstall = false;
+            UseDownloadedFiles = false;
+            TrailersOn = false;
+            SingleThreadMode = false;
+            BmbfChecked = true;
+            VirtualFilesystemCompatibility = false;
+            HideAdultContent = false;
+
+            // UI defaults
+            PackageNameToCb = false; // Don't copy package name by default
+
+            // Favorites
+            FavoriteGames = [];
+
+            // Load saved settings
             Load();
-            Save();
         }
 
-        public static SettingsManager Instance => _instance.Value;
+        private static string GetAdbExecutableName()
+        {
+            return System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                System.Runtime.InteropServices.OSPlatform.Windows) ? "adb.exe" : "adb";
+        }
+
+        private void Load()
+        {
+            try
+            {
+                var settingsPath = GetSettingsPath();
+                if (File.Exists(settingsPath))
+                {
+                    var json = File.ReadAllText(settingsPath);
+                    var loadedSettings = JsonSerializer.Deserialize<SettingsData>(json);
+
+                    if (loadedSettings != null)
+                    {
+                        // Apply loaded settings
+                        if (!string.IsNullOrEmpty(loadedSettings.CurrentLogPath))
+                            CurrentLogPath = loadedSettings.CurrentLogPath;
+                        if (!string.IsNullOrEmpty(loadedSettings.Uuid))
+                            Uuid = loadedSettings.Uuid;
+                        if (!string.IsNullOrEmpty(loadedSettings.AdbFolder))
+                            AdbFolder = loadedSettings.AdbFolder;
+                        if (!string.IsNullOrEmpty(loadedSettings.AdbPath))
+                            AdbPath = loadedSettings.AdbPath;
+                        if (!string.IsNullOrEmpty(loadedSettings.DownloadDir))
+                            DownloadDir = loadedSettings.DownloadDir;
+                        if (!string.IsNullOrEmpty(loadedSettings.MainDir))
+                            MainDir = loadedSettings.MainDir;
+                        if (!string.IsNullOrEmpty(loadedSettings.BackupDir))
+                            BackupDir = loadedSettings.BackupDir;
+                        if (!string.IsNullOrEmpty(loadedSettings.IpAddress))
+                            IpAddress = loadedSettings.IpAddress;
+
+                        AdbDebugWarned = loadedSettings.AdbDebugWarned;
+                        NodeviceMode = loadedSettings.NodeviceMode;
+                        AutoReinstall = loadedSettings.AutoReinstall;
+                        Wired = loadedSettings.Wired;
+                        CustomDownloadDir = loadedSettings.CustomDownloadDir;
+                        CustomBackupDir = loadedSettings.CustomBackupDir;
+                        BandwidthLimit = loadedSettings.BandwidthLimit;
+                        CheckForUpdates = loadedSettings.CheckForUpdates;
+                        EnableMessageBoxes = loadedSettings.EnableMessageBoxes;
+                        DeleteAllAfterInstall = loadedSettings.DeleteAllAfterInstall;
+                        AutoUpdateConfig = loadedSettings.AutoUpdateConfig;
+                        CreatePubMirrorFile = loadedSettings.CreatePubMirrorFile;
+                        UserJsonOnGameInstall = loadedSettings.UserJsonOnGameInstall;
+                        UseDownloadedFiles = loadedSettings.UseDownloadedFiles;
+                        TrailersOn = loadedSettings.TrailersOn;
+                        SingleThreadMode = loadedSettings.SingleThreadMode;
+                        BmbfChecked = loadedSettings.BmbfChecked;
+                        VirtualFilesystemCompatibility = loadedSettings.VirtualFilesystemCompatibility;
+                        HideAdultContent = loadedSettings.HideAdultContent;
+                        PackageNameToCb = loadedSettings.PackageNameToCb;
+
+                        if (loadedSettings.FavoriteGames != null)
+                            FavoriteGames = [..loadedSettings.FavoriteGames];
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Failed to load settings: {ex.Message}");
+                // Continue with defaults
+            }
+        }
 
         public void Save()
         {
             try
             {
-                var settings = new JsonSerializerSettings
+                var settingsData = new SettingsData
                 {
-                    Formatting = Formatting.Indented,
-                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                    CurrentLogPath = CurrentLogPath,
+                    Uuid = Uuid,
+                    AdbFolder = AdbFolder,
+                    AdbPath = AdbPath,
+                    AdbDebugWarned = AdbDebugWarned,
+                    NodeviceMode = NodeviceMode,
+                    AutoReinstall = AutoReinstall,
+                    Wired = Wired,
+                    IpAddress = IpAddress,
+                    DownloadDir = DownloadDir,
+                    CustomDownloadDir = CustomDownloadDir,
+                    MainDir = MainDir,
+                    BackupDir = BackupDir,
+                    CustomBackupDir = CustomBackupDir,
+                    BandwidthLimit = BandwidthLimit,
+                    CheckForUpdates = CheckForUpdates,
+                    EnableMessageBoxes = EnableMessageBoxes,
+                    DeleteAllAfterInstall = DeleteAllAfterInstall,
+                    AutoUpdateConfig = AutoUpdateConfig,
+                    CreatePubMirrorFile = CreatePubMirrorFile,
+                    UserJsonOnGameInstall = UserJsonOnGameInstall,
+                    UseDownloadedFiles = UseDownloadedFiles,
+                    TrailersOn = TrailersOn,
+                    SingleThreadMode = SingleThreadMode,
+                    BmbfChecked = BmbfChecked,
+                    VirtualFilesystemCompatibility = VirtualFilesystemCompatibility,
+                    HideAdultContent = HideAdultContent,
+                    PackageNameToCb = PackageNameToCb,
+                    FavoriteGames = new System.Collections.Generic.List<string>(FavoriteGames)
                 };
 
-                var json = JsonConvert.SerializeObject(this, settings);
-                File.WriteAllText(settingsFilePath, json);
+                var settingsPath = GetSettingsPath();
+                var settingsDir = Path.GetDirectoryName(settingsPath);
+                if (!Directory.Exists(settingsDir))
+                {
+                    Directory.CreateDirectory(settingsDir);
+                }
+
+                var options = new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                };
+
+                var json = JsonSerializer.Serialize(settingsData, options);
+                File.WriteAllText(settingsPath, json);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error saving settings: {ex.Message}");
+                Logger.Log($"Failed to save settings: {ex.Message}");
             }
         }
 
-        private void Load()
+        private string GetSettingsPath()
         {
-            Debug.WriteLine("Loading settings...");
-            if (!File.Exists(settingsFilePath))
-            {
-                CreateDefaultSettings();
-                return;
-            }
-
-            try
-            {
-                var json = File.ReadAllText(settingsFilePath);
-                var settings = new JsonSerializerSettings
-                {
-                    Error = (sender, args) =>
-                    {
-                        Debug.WriteLine($"Error deserializing setting: {args.ErrorContext.Error.Message}");
-                        args.ErrorContext.Handled = true;
-                    }
-                };
-
-                JsonConvert.PopulateObject(json, this, settings);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error loading settings: {ex.Message}");
-                CreateDefaultSettings();
-            }
+            var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var rookieDataPath = Path.Combine(appDataPath, "Rookie");
+            return Path.Combine(rookieDataPath, "settings.json");
         }
 
-        private void CreateDefaultSettings()
+        // Data class for JSON serialization
+        private class SettingsData
         {
-            FontStyle = new Font("Microsoft Sans Serif", 11.25f);
-            BigFontStyle = new Font("Microsoft Sans Serif", 14f);
-            FontColor = Color.White;
-            ComboBoxColor = Color.FromArgb(25, 25, 25);
-            SubButtonColor = Color.FromArgb(25, 25, 25);
-            TextBoxColor = Color.FromArgb(25, 25, 25);
-            ButtonColor = Color.Black;
-            BackColor = Color.FromArgb(1, 1, 1);
-            CheckForUpdates = true;
-            EnableMessageBoxes = true;
-            FirstRun = true;
-            DeleteAllAfterInstall = true;
-            AutoUpdateConfig = true;
-            UserJsonOnGameInstall = false;
-            CallUpgrade = true;
-            BackPicturePath = string.Empty;
-            SpoofGames = false;
-            ResignAPKs = false;
-            IPAddress = string.Empty;
-            InstalledApps = string.Empty;
-            ADBPath = string.Empty;
-            MainDir = string.Empty;
-            Delsh = false;
-            CurrPckg = string.Empty;
-            ADBFolder = string.Empty;
-            WirelessADB = false;
-            CurrentGamename = string.Empty;
-            PackageNameToCB = false;
-            DownUpHeld = false;
-            CurrentLogPath = string.Empty;
-            CurrentLogName = string.Empty;
-            CurrentCrashPath = string.Empty;
-            CurrentCrashName = string.Empty;
-            AdbDebugWarned = false;
-            NodeviceMode = false;
-            BMBFChecked = true;
-            GamesList = string.Empty;
-            UploadedGameList = false;
-            GlobalUsername = string.Empty;
-            LastTimeShared = new DateTime(1969, 4, 20, 16, 20, 0);
-            AutoReinstall = false;
-            NonAppPackages = string.Empty;
-            LastLaunch = new DateTime(1969, 4, 20, 16, 20, 0);
-            SubmittedUpdates = string.Empty;
-            ListUpped = false;
-            LastLaunch2 = new DateTime(1969, 4, 20, 16, 20, 0);
-            Wired = false;
-            AppPackages = string.Empty;
-            TrailersOn = false;
-            DownloadDir = string.Empty;
-            CustomDownloadDir = false;
-            CustomBackupDir = false;
-            BackupDir = string.Empty;
-            SingleThreadMode = true;
-            VirtualFilesystemCompatibility = false;
-            UpdateSettings = true;
-            UUID = Guid.NewGuid().ToString();
-            CreatePubMirrorFile = true;
-            UseDownloadedFiles = false;
-            BandwidthLimit = 0f;
-            HideAdultContent = false;
-            FavoritedGames = new string[0];
-
-        Save();
-            Debug.WriteLine("Default settings created.");
-        }
-
-        public void AddFavoriteGame(string packageName)
-        {
-            if (!FavoritedGames.Contains(packageName))
-            {
-                var list = FavoritedGames.ToList();
-                list.Add(packageName);
-                FavoritedGames = list.ToArray();
-                Save(); 
-            }
-        }
-
-        public void RemoveFavoriteGame(string packageName)
-        {
-            if (FavoritedGames.Contains(packageName))
-            {
-                var list = FavoritedGames.ToList();
-                list.Remove(packageName);
-                FavoritedGames = list.ToArray();
-                Save(); 
-            }
-        }
-
-        public void Dispose()
-        {
-            FontStyle?.Dispose();
-            BigFontStyle?.Dispose();
+            public string CurrentLogPath { get; init; }
+            public string Uuid { get; init; }
+            public string AdbFolder { get; init; }
+            public string AdbPath { get; init; }
+            public bool AdbDebugWarned { get; init; }
+            public bool NodeviceMode { get; init; }
+            public bool AutoReinstall { get; init; }
+            public bool Wired { get; init; }
+            public string IpAddress { get; init; }
+            public string DownloadDir { get; init; }
+            public bool CustomDownloadDir { get; init; }
+            public string MainDir { get; init; }
+            public string BackupDir { get; init; }
+            public bool CustomBackupDir { get; init; }
+            public int BandwidthLimit { get; init; }
+            public bool CheckForUpdates { get; init; }
+            public bool EnableMessageBoxes { get; init; }
+            public bool DeleteAllAfterInstall { get; init; }
+            public bool AutoUpdateConfig { get; init; }
+            public bool CreatePubMirrorFile { get; init; }
+            public bool UserJsonOnGameInstall { get; init; }
+            public bool UseDownloadedFiles { get; init; }
+            public bool TrailersOn { get; init; }
+            public bool SingleThreadMode { get; init; }
+            public bool BmbfChecked { get; init; }
+            public bool VirtualFilesystemCompatibility { get; init; }
+            public bool HideAdultContent { get; init; }
+            public bool PackageNameToCb { get; init; }
+            public System.Collections.Generic.List<string> FavoriteGames { get; init; }
         }
     }
 }

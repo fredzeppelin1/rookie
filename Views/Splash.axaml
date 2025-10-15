@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AndroidSideloader.Views.Splash"
+        Title="Rookie"
+        Width="800" Height="450"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent">
+    <Border CornerRadius="10" ClipToBounds="True">
+        <Panel>
+            <!-- Splash Image Background -->
+            <Image x:Name="SplashImage"
+                   Source="avares://AndroidSideloader/Resources/splashimage.png"
+                   Stretch="UniformToFill"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center"/>
+        </Panel>
+    </Border>
+</Window>

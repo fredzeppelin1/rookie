@@ -1,80 +1,77 @@
 using System;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace AndroidSideloader.Utilities
 {
-    internal class Metrics
+    /// <summary>
+    /// Handles anonymous download metrics reporting to VRPirates API
+    /// </summary>
+    public static class Metrics
     {
+        private static readonly HttpClient HttpClient = new();
+        private const string ApiUrl = "https://api.vrpirates.wiki/metrics/add";
+        private const string AuthToken = "cm9va2llOkN0UHlyTE9oUGoxWXg1cE9KdDNBSkswZ25n";
+
+        static Metrics()
+        {
+            // Configure HttpClient headers once
+            HttpClient.DefaultRequestHeaders.Add("Authorization", AuthToken);
+            HttpClient.DefaultRequestHeaders.Add("Origin", "rookie");
+            HttpClient.Timeout = TimeSpan.FromSeconds(10);
+        }
+
+        /// <summary>
+        /// Track a game download anonymously (non-blocking)
+        /// </summary>
+        /// <param name="packageName">Game package name (e.g., com.beatgames.beatsaber)</param>
+        /// <param name="versionCode">Game version code</param>
         public static async void CountDownload(string packageName, string versionCode)
         {
             try
             {
-                var apiUrl = "https://api.vrpirates.wiki/metrics/add";
+                if (string.IsNullOrEmpty(packageName) || string.IsNullOrEmpty(versionCode))
+                {
+                    Logger.Log("Skipping metrics: missing package name or version", LogLevel.Debug);
+                    return;
+                }
 
                 var requestBody = new
                 {
                     packagename = packageName,
                     versioncode = versionCode
                 };
-                var json = JsonConvert.SerializeObject(requestBody);
-                string res = await Task.Run(() => sendToApi(apiUrl, json, "post"));
-                _ = Logger.Log(res);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Unable to log download: {ex.Message}", LogLevel.WARNING);
-            }
-        }
 
+                var json = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        private static async Task<string> sendToApi(string apiUrl, string requestBody = null, string type = "get")
-        {
-            string token = "cm9va2llOkN0UHlyTE9oUGoxWXg1cE9KdDNBSkswZ25n";
+                Logger.Log($"Reporting download metrics for {packageName} v{versionCode}", LogLevel.Debug);
 
-            using (var client = new HttpClient())
-            {
-                var request = new HttpRequestMessage();
+                var response = await HttpClient.PostAsync(ApiUrl, content);
+                var responseText = await response.Content.ReadAsStringAsync();
 
-                // Set the HTTP method
-                request.Method = type.ToLower() == "post" ? HttpMethod.Post : HttpMethod.Get;
-
-                // For GET requests with parameters, append them to the URL
-                if (request.Method == HttpMethod.Get && !string.IsNullOrEmpty(requestBody))
+                if (response.IsSuccessStatusCode)
                 {
-                    var uriBuilder = new UriBuilder(apiUrl);
-                    uriBuilder.Query = requestBody;
-                    request.RequestUri = uriBuilder.Uri;
+                    Logger.Log($"Metrics reported successfully: {responseText}", LogLevel.Debug);
                 }
                 else
                 {
-                    request.RequestUri = new Uri(apiUrl);
+                    Logger.Log($"Metrics API returned {response.StatusCode}: {responseText}", LogLevel.Warning);
                 }
-
-                // For POST requests, set the content
-                if (request.Method == HttpMethod.Post && !string.IsNullOrEmpty(requestBody))
-                {
-                    request.Content = new StringContent(requestBody, Encoding.UTF8, "application/json");
-                }
-
-                // Add headers to the request
-                request.Headers.Add("Authorization", token);
-                request.Headers.Add("Origin", "rookie");
-
-                string responseContent = "";
-                try
-                {
-                    HttpResponseMessage response = await client.SendAsync(request);
-                    responseContent = await response.Content.ReadAsStringAsync();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Log($"Unable to get Metrics Data: {ex.Message}", LogLevel.WARNING);
-                }
-
-                return responseContent;
+            }
+            catch (TaskCanceledException)
+            {
+                Logger.Log("Metrics request timed out (non-critical)", LogLevel.Debug);
+            }
+            catch (HttpRequestException ex)
+            {
+                Logger.Log($"Unable to report metrics (non-critical): {ex.Message}", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Unexpected error reporting metrics: {ex.Message}", LogLevel.Warning);
             }
         }
     }

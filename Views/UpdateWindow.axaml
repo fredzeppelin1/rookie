@@ -1,0 +1,64 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:AndroidSideloader.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="450"
+        x:Class="AndroidSideloader.Views.UpdateWindow"
+        x:DataType="vm:UpdateViewModel"
+        Title="Update Available"
+        Width="600" Height="450"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Icon="/Assets/icon.ico">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#2a2a2a"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#404040"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#3a3a3a"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid Background="#1a1a1a" Margin="20" RowDefinitions="Auto,Auto,*,Auto">
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Update Available" FontSize="24" FontWeight="Bold" Margin="0,0,0,10"/>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Current Version: " FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding CurrentVersion}"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                <TextBlock Text="New Version: " FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding NewVersion}" Foreground="#4CAF50"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Changelog label -->
+        <TextBlock Grid.Row="1" Text="Changelog:" FontWeight="SemiBold" Margin="0,0,0,10"/>
+
+        <!-- Changelog text -->
+        <Border Grid.Row="2" BorderBrush="#404040" BorderThickness="1" Padding="10" Margin="0,0,0,20">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBlock Text="{Binding Changelog}"
+                          TextWrapping="Wrap"
+                          LineHeight="20"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+            <Button Content="Skip Update" Command="{Binding SkipCommand}" Width="120"/>
+            <Button Content="Update Now" Command="{Binding UpdateCommand}" Width="120" Background="#4CAF50"/>
+        </StackPanel>
+    </Grid>
+</Window>

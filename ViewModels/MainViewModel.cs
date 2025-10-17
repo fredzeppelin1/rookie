@@ -2995,55 +2995,62 @@ public class MainViewModel : ReactiveObject
     /// </summary>
     private async Task ProcessNextQueueItem()
     {
+        // Remove the completed game from queue (first item)
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            // Remove the completed game from queue (first item)
             if (GamesQueue.Count > 0)
             {
                 var completed = GamesQueue[0];
                 GamesQueue.RemoveAt(0);
                 Logger.Log($"Removed completed game from queue: {completed}");
             }
+        });
 
-            // Check if there are more games to download
-            if (GamesQueue.Count > 0)
+        // Check if there are more games to download
+        if (GamesQueue.Count > 0)
+        {
+            var nextGameName = GamesQueue[0];
+            Logger.Log($"Processing next queued game: {nextGameName}");
+
+            // Find the game in the games list
+            var nextGame = _allGames.FirstOrDefault(g => g.GameName == nextGameName);
+            if (nextGame != null)
             {
-                var nextGameName = GamesQueue[0];
-                Logger.Log($"Processing next queued game: {nextGameName}");
-
-                // Find the game in the games list
-                var nextGame = _allGames.FirstOrDefault(g => g.GameName == nextGameName);
-                if (nextGame != null)
+                await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     SelectedGame = nextGame;
                     Logger.Log($"Found game in list: {nextGame.GameName}");
+                });
 
-                    // Start downloading the next game
-                    Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await DownloadInstallGameAsync();
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.Log($"Error processing queued game: {ex.Message}", LogLevel.Error);
-                        }
-                    });
-                }
-                else
+                // Start downloading the next game
+                Task.Run(async () =>
                 {
-                    Logger.Log($"Could not find game in list: {nextGameName}", LogLevel.Warning);
-                    // Remove from queue if not found and try next
-                    GamesQueue.RemoveAt(0);
-                    ProcessNextQueueItem().GetAwaiter().GetResult();
-                }
+                    try
+                    {
+                        await DownloadInstallGameAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Error processing queued game: {ex.Message}", LogLevel.Error);
+                    }
+                });
             }
             else
             {
-                Logger.Log("Queue is empty, no more games to download");
+                Logger.Log($"Could not find game in list: {nextGameName}", LogLevel.Warning);
+                // Remove from queue if not found and try next
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    GamesQueue.RemoveAt(0);
+                });
+                // Recursively process next item without blocking
+                await ProcessNextQueueItem();
             }
-        });
+        }
+        else
+        {
+            Logger.Log("Queue is empty, no more games to download");
+        }
     }
 
     private async Task DisableSideloadingAsync()

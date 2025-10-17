@@ -9,24 +9,17 @@ namespace AndroidSideloader.Sideloader;
 /// </summary>
 public class RcloneProgress
 {
-    public double Percentage { get; set; }
-    public long TransferredBytes { get; set; }
-    public long TotalBytes { get; set; }
-    public double SpeedMBps { get; set; }
-    public string SpeedText { get; set; }
-    public int EtaSeconds { get; set; }
-    public string EtaText { get; set; }
-    public string StatusText { get; set; }
-    public int CurrentFile { get; set; }
-    public int TotalFiles { get; set; }
+    public double Percentage { get; private set; }
+    public string SpeedText { get; private set; }
+    private int EtaSeconds { get; set; }
+    public string EtaText { get; private set; }
+    public string StatusText { get; private set; }
 
-    public RcloneProgress()
+    private RcloneProgress()
     {
         SpeedText = "Speed: -- MB/s";
         EtaText = "ETA: --:--";
         StatusText = "Starting...";
-        CurrentFile = 0;
-        TotalFiles = 0;
     }
 
     /// <summary>
@@ -75,26 +68,12 @@ public class RcloneProgress
                 progress.Percentage = double.Parse(percentMatch.Groups[1].Value);
             }
 
-            // Extract transferred / total (e.g., "1.234 GiB / 2.468 GiB")
-            var sizeMatch = Regex.Match(line, @"([\d.]+)\s*(Ki?B|Mi?B|Gi?B)\s*/\s*([\d.]+)\s*(Ki?B|Mi?B|Gi?B)");
-            if (sizeMatch.Success)
-            {
-                var transferred = double.Parse(sizeMatch.Groups[1].Value);
-                var transferredUnit = sizeMatch.Groups[2].Value;
-                var total = double.Parse(sizeMatch.Groups[3].Value);
-                var totalUnit = sizeMatch.Groups[4].Value;
-
-                progress.TransferredBytes = (long)(transferred * GetBytesMultiplier(transferredUnit));
-                progress.TotalBytes = (long)(total * GetBytesMultiplier(totalUnit));
-            }
-
             // Extract speed (e.g., "12.5 MiB/s" or "1.2 GiB/s")
             var speedMatch = Regex.Match(line, @"([\d.]+)\s*(Ki?B|Mi?B|Gi?B)/s");
             if (speedMatch.Success)
             {
                 var speed = double.Parse(speedMatch.Groups[1].Value);
                 var speedUnit = speedMatch.Groups[2].Value;
-                progress.SpeedMBps = speed * GetBytesMultiplier(speedUnit) / (1024 * 1024); // Convert to MB/s
                 progress.SpeedText = $"Speed: {speed:F1} {speedUnit}/s";
             }
 
@@ -104,18 +83,17 @@ public class RcloneProgress
             {
                 var minutes = etaMatch.Groups[1].Success ? int.Parse(etaMatch.Groups[1].Value) : 0;
                 var seconds = etaMatch.Groups[2].Success ? int.Parse(etaMatch.Groups[2].Value) : 0;
-                progress.EtaSeconds = (minutes * 60) + seconds;
+                progress.EtaSeconds = minutes * 60 + seconds;
 
                 if (progress.EtaSeconds > 0)
                 {
                     var hours = progress.EtaSeconds / 3600;
-                    var mins = (progress.EtaSeconds % 3600) / 60;
+                    var mins = progress.EtaSeconds % 3600 / 60;
                     var secs = progress.EtaSeconds % 60;
 
-                    if (hours > 0)
-                        progress.EtaText = $"ETA: {hours:D2}:{mins:D2}:{secs:D2}";
-                    else
-                        progress.EtaText = $"ETA: {mins:D2}:{secs:D2}";
+                    progress.EtaText = hours > 0 
+                        ? $"ETA: {hours:D2}:{mins:D2}:{secs:D2}" 
+                        : $"ETA: {mins:D2}:{secs:D2}";
                 }
                 else
                 {
@@ -126,14 +104,9 @@ public class RcloneProgress
             // Build status text (percentage shown in progress bar, not status text)
             if (progress.Percentage > 0)
             {
-                if (!string.IsNullOrEmpty(Rclone.CurrentGameName))
-                {
-                    progress.StatusText = $"Downloading {Rclone.CurrentGameName}...";
-                }
-                else
-                {
-                    progress.StatusText = "Downloading...";
-                }
+                progress.StatusText = !string.IsNullOrEmpty(Rclone.CurrentGameName) 
+                    ? $"Downloading {Rclone.CurrentGameName}..." 
+                    : "Downloading...";
             }
 
             return progress;
@@ -143,17 +116,5 @@ public class RcloneProgress
             Logger.Log($"Error parsing rclone progress: {ex.Message}");
             return null;
         }
-    }
-
-    private static double GetBytesMultiplier(string unit)
-    {
-        return unit.ToUpper() switch
-        {
-            "B" => 1,
-            "KB" or "KIB" => 1024,
-            "MB" or "MIB" => 1024 * 1024,
-            "GB" or "GIB" => 1024 * 1024 * 1024,
-            _ => 1
-        };
     }
 }

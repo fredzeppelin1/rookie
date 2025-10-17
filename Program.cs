@@ -1,23 +1,20 @@
 ﻿using Avalonia;
 using Avalonia.ReactiveUI;
-using System;
 using AndroidSideloader.Views;
+using System;
 
 namespace AndroidSideloader;
 
-class Program
+internal class Program
 {
     // Initialization code. Don't use any Avalonia, third-party APIs or any
-    // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
+    // SynchronizationContext-reliant code before BuildAvaloniaApp is called: things aren't initialized
     // yet and stuff might break.
     [STAThread]
-    public static void Main(string[] args) => BuildAvaloniaApp()
+    public static void Main(string[] args) => 
+        AppBuilder.Configure<App>()
+        .UsePlatformDetect()
+        .UseReactiveUI()
+        .LogToTrace()
         .StartWithClassicDesktopLifetime(args);
-
-    // Avalonia configuration, don't remove; also used by visual designer.
-    public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .UseReactiveUI()
-            .LogToTrace();
 }

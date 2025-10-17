@@ -16,18 +16,11 @@
     <Compile Update="RoundButton.cs">
       <SubType>Component</SubType>
     </Compile>
-    <None Update="Rookie Offline.cmd">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="CleanupInstall.cmd">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="AddDefenderExceptions.ps1">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="version">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <None Update="build.sh" CopyToOutputDirectory="PreserveNewest"/>
+    <None Update="Rookie Offline.cmd" CopyToOutputDirectory="PreserveNewest"/>
+    <None Update="CleanupInstall.cmd" CopyToOutputDirectory="PreserveNewest"/>
+    <None Update="AddDefenderExceptions.ps1" CopyToOutputDirectory="PreserveNewest"/>
+    <None Update="version" CopyToOutputDirectory="PreserveNewest"/>
     <PackageReference Include="MessageBox.Avalonia" Version="3.2.0" />
     <PackageReference Include="SharpCompress" Version="0.40.0" />
     <Compile Update="Views\MainWindow.axaml.cs">

@@ -7,6 +7,7 @@
         x:Class="AndroidSideloader.Views.MainWindow"
         x:DataType="viewModels:MainViewModel"
         Title="Rookie Sideloader"
+        Icon="/icon.ico"
         Width="1200" Height="855"
         DragDrop.AllowDrop="True">
 
@@ -148,9 +149,12 @@
         </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="*,Auto" ColumnDefinitions="220,*">
-        <!-- Left Navigation Panel -->
-        <Border Grid.RowSpan="2" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0" Background="#111111">
+    <!-- Main container with overlay support -->
+    <Grid>
+        <!-- Main content -->
+        <Grid RowDefinitions="*,Auto" ColumnDefinitions="220,*">
+            <!-- Left Navigation Panel -->
+            <Border Grid.RowSpan="2" Grid.Column="0" BorderBrush="Gray" BorderThickness="0,0,1,0" Background="#111111">
             <ScrollViewer Background="Transparent">
                 <StackPanel Margin="0" Background="Transparent">
                     <Expander Header="DEVICE" IsExpanded="True">
@@ -342,7 +346,14 @@
             <!-- Progress Bar and Download Button Row -->
             <Grid Grid.Row="3" Margin="5,5,5,5" ColumnDefinitions="*,Auto,Auto">
                 <!-- Progress bar on left -->
-                <ProgressBar Grid.Column="0" Value="{Binding ProgressPercentage}" Maximum="100" Height="25" Margin="0,0,10,0" VerticalAlignment="Center" Background="#1a1a1a"/>
+                <ProgressBar Grid.Column="0"
+                             Value="{Binding ProgressPercentage}"
+                             Maximum="100"
+                             Height="25"
+                             Margin="0,0,10,0"
+                             VerticalAlignment="Center"
+                             Background="#1a1a1a"
+                             IsVisible="{Binding IsProgressVisible}"/>
 
                 <!-- Cancel button -->
                 <Button Grid.Column="1"
@@ -367,9 +378,9 @@
                     <Image Source="{Binding SelectedGameImage}" Stretch="Uniform"/>
                 </Border>
 
-                <!-- Right Column: Queue and Notes Stacked -->
-                <Grid Grid.Column="1" RowDefinitions="*,*">
-                    <!-- Queue ListBox -->
+                <!-- Right Column: Download Queue, Upload Queue, and Notes Stacked -->
+                <Grid Grid.Column="1" RowDefinitions="2*,1*,2*">
+                    <!-- Download Queue -->
                     <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1" Margin="0,0,0,2" Background="#1a1a1a">
                         <StackPanel Background="#1a1a1a">
                             <TextBlock Text="Download Queue" Foreground="White" Margin="1,2" FontWeight="Bold"/>
@@ -387,8 +398,60 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Release Notes TextBox -->
-                    <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" Margin="0,2,0,0" Background="#1a1a1a">
+                    <!-- Upload Queue -->
+                    <Border Grid.Row="1" BorderBrush="Gray" BorderThickness="1" Margin="0,2" Background="#1a1a1a">
+                        <Grid RowDefinitions="Auto,Auto,*">
+                            <!-- Header with title and button -->
+                            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Background="#1a1a1a">
+                                <TextBlock Grid.Column="0" Text="Upload Queue" Foreground="White" Margin="1,2" FontWeight="Bold"/>
+                                <Button Grid.Column="1" Content="Process Queue"
+                                        Command="{Binding ProcessUploadQueueCommand}"
+                                        Padding="5,2"
+                                        Margin="2"
+                                        FontSize="11"
+                                        ToolTip.Tip="Upload queued games to VRPirates mirrors"/>
+                            </Grid>
+
+                            <!-- Upload status text (visible during active uploads) -->
+                            <TextBlock Grid.Row="1"
+                                       Text="{Binding UploadStatusText}"
+                                       Foreground="#4CAF50"
+                                       FontSize="11"
+                                       Margin="3,2"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding !!UploadStatusText}"/>
+
+                            <!-- Upload queue list -->
+                            <ListBox Grid.Row="2"
+                                     ItemsSource="{Binding UploadQueue}"
+                                     Background="#141414"
+                                     Foreground="White"
+                                     BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="2*,*">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding GameName}"
+                                                       Foreground="White"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Margin="2"/>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding StatusMessage}"
+                                                       Foreground="#4CAF50"
+                                                       FontSize="11"
+                                                       Margin="5,2"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <!-- Release Notes -->
+                    <Border Grid.Row="2" BorderBrush="Gray" BorderThickness="1" Margin="0,2,0,0" Background="#1a1a1a">
                         <StackPanel Background="#1a1a1a">
                             <TextBlock Text="Release Notes" Foreground="White" Margin="1,2" FontWeight="Bold"/>
                             <TextBox Background="Transparent"
@@ -414,6 +477,45 @@
                 <TextBlock Grid.Column="1" Text="{Binding SpeedText}" Foreground="White" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
                 <TextBlock Grid.Column="2" Text="{Binding EtaText}" Foreground="White" FontSize="11" VerticalAlignment="Center" Margin="0,0,20,0"/>
                 <TextBlock Grid.Column="3" Text="{Binding VersionText}" Foreground="White" FontSize="14" FontWeight="Bold" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+        </Grid>
+
+        <!-- ADB Command Overlay (appears on top of main content) -->
+        <Border IsVisible="{Binding IsAdbCommandBoxVisible}"
+                Background="#CC000000"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch">
+            <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Background="#2a2a2a"
+                        BorderBrush="Gray"
+                        BorderThickness="1"
+                        Padding="20"
+                        CornerRadius="5"
+                        Width="500">
+                    <StackPanel>
+                        <!-- Label (dynamic: "Enter ADB Command" or "Enter Device IP") -->
+                        <TextBlock Text="{Binding AdbCommandBoxLabel}"
+                                   Foreground="White"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,10"/>
+
+                        <!-- TextBox for command/IP input -->
+                        <TextBox Text="{Binding AdbCommandText}"
+                                 Name="AdbCommandTextBox"
+                                 Watermark="Type command and press Enter..."
+                                 Background="#1a1a1a"
+                                 Foreground="White"
+                                 Padding="8"
+                                 FontSize="13"/>
+
+                        <TextBlock Text="Press Enter to execute, Esc to cancel"
+                                   Foreground="#888888"
+                                   FontSize="11"
+                                   Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
     </Grid>

@@ -96,7 +96,7 @@
                 <CheckBox Name="AutoReinstallCheckBox" Content="Enable auto reinstall upon install failure"/>
                 <CheckBox Name="EnableMessageBoxesCheckBox" Content="Enable Message Boxes on task completed"/>
                 <CheckBox Name="UserJsonOnGameInstallCheckBox" Content="Push random user json on install"/>
-                <CheckBox Name="BMBFCheckBox" Content="Enable BMBF song zips drag and drop"/>
+                <CheckBox Name="BmbfCheckBox" Content="Enable BMBF song zips drag and drop"/>
                 <CheckBox Name="VirtualFilesystemCompatibilityCheckBox" Content="Enable Virtual Filesystem Compatibility"/>
                 <CheckBox Name="HideAdultContentCheckBox" Content="Hide Adult Content"/>
 

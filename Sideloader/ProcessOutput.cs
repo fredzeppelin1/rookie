@@ -1,19 +1,20 @@
-﻿namespace AndroidSideloader.Sideloader
+﻿namespace AndroidSideloader.Sideloader;
+
+public class ProcessOutput
 {
-    public class ProcessOutput
+    public string Output;
+    public string Error;
+    public int ExitCode;
+
+    public ProcessOutput(string output = "", string error = "", int exitCode = 0)
     {
-        public string Output;
-        public string Error;
+        Output = output;
+        Error = error;
+        ExitCode = exitCode;
+    }
 
-        public ProcessOutput(string output = "", string error = "")
-        {
-            Output = output;
-            Error = error;
-        }
-
-        public static ProcessOutput operator +(ProcessOutput a, ProcessOutput b)
-        {
-            return new ProcessOutput(a.Output + b.Output, a.Error + b.Error);
-        }
+    public static ProcessOutput operator +(ProcessOutput a, ProcessOutput b)
+    {
+        return new ProcessOutput(a.Output + b.Output, a.Error + b.Error);
     }
 }

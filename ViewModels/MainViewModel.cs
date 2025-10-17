@@ -352,10 +352,10 @@ public class MainViewModel : ReactiveObject
 
         _games = [];
         _uploadQueue = [];
-        GamesQueue = [];
-        Remotes = [];
-        Devices = [];
-        InstalledAppNames = [];
+        GamesQueue = new ObservableCollection<string>();
+        Remotes = new ObservableCollection<string>();
+        Devices = new ObservableCollection<string>();
+        InstalledAppNames = new ObservableCollection<string>();
 
         // Initialize _allGames with dummy data for now
         _allGames = [];
@@ -407,6 +407,9 @@ public class MainViewModel : ReactiveObject
 
         // Initialize device list with placeholder
         Devices.Add("Select your device");
+
+        // Initialize installed apps list with placeholder
+        InstalledAppNames.Add("No device connected...");
 
         CheckCommandLineArguments(); // Call the new method
         SetCurrentLogPath(); // Call the new method
@@ -1392,22 +1395,61 @@ public class MainViewModel : ReactiveObject
         await ExecuteCommandAsync("Uninstall App", async () =>
         {
             if (!await EnsureDeviceConnectedAsync()) return;
-            if (!await EnsureGameSelectedAsync("uninstall")) return;
+
+            // Get package name and game name from either SelectedGame or SelectedInstalledApp
+            string packageName;
+            string gameName;
+
+            // Try SelectedGame first (from main game list), then SelectedInstalledApp (from dropdown)
+            if (SelectedGame != null)
+            {
+                packageName = SelectedGame.PackageName;
+                gameName = SelectedGame.GameName;
+            }
+            else if (!string.IsNullOrEmpty(SelectedInstalledApp))
+            {
+                // User selected from installed apps dropdown
+                var matchingGame = _allGames.FirstOrDefault(g =>
+                    g.GameName.Equals(SelectedInstalledApp, StringComparison.OrdinalIgnoreCase));
+
+                if (matchingGame != null)
+                {
+                    packageName = matchingGame.PackageName;
+                    gameName = matchingGame.GameName;
+                }
+                else
+                {
+                    // If not in our game list, assume the dropdown entry is the package name
+                    packageName = SelectedInstalledApp;
+                    gameName = SelectedInstalledApp;
+                }
+            }
+            else
+            {
+                // Nothing selected - show error
+                if (_dialogService != null)
+                {
+                    await _dialogService.ShowErrorAsync(
+                        "Please select an installed app from the dropdown or select a game from the list.",
+                        "No App Selected");
+                }
+                return;
+            }
 
             // Confirm uninstall
             if (_dialogService != null)
             {
                 var confirmed = await _dialogService.ShowConfirmationAsync(
-                    $"Are you sure you want to uninstall?\n\n{SelectedGame.GameName}\n\nPackage: {SelectedGame.PackageName}",
+                    $"Are you sure you want to uninstall?\n\n{gameName}\n\nPackage: {packageName}",
                     "Confirm Uninstall");
 
                 if (!confirmed) return;
             }
 
-            ProgressStatusText = $"Uninstalling {SelectedGame.GameName}...";
+            ProgressStatusText = $"Uninstalling {gameName}...";
 
             // Use UninstallGame which also cleans up OBB and data folders
-            var result = SideloaderUtilities.UninstallGame(SelectedGame.PackageName);
+            var result = SideloaderUtilities.UninstallGame(packageName);
 
             if (result.Output.Contains("Success"))
             {
@@ -1415,7 +1457,7 @@ public class MainViewModel : ReactiveObject
                 if (_dialogService != null)
                 {
                     await _dialogService.ShowInfoAsync(
-                        $"{SelectedGame.GameName} has been uninstalled.",
+                        $"{gameName} has been uninstalled.",
                         "Uninstall Complete");
                 }
             }
@@ -1703,7 +1745,46 @@ public class MainViewModel : ReactiveObject
         await ExecuteCommandAsync("Backup ADB", async () =>
         {
             if (!await EnsureDeviceConnectedAsync()) return;
-            if (!await EnsureGameSelectedAsync("backup")) return;
+
+            // Get package name and game name from either SelectedGame or SelectedInstalledApp
+            string packageName;
+            string gameName;
+
+            // Try SelectedGame first (from main game list), then SelectedInstalledApp (from dropdown)
+            if (SelectedGame != null)
+            {
+                packageName = SelectedGame.PackageName;
+                gameName = SelectedGame.GameName;
+            }
+            else if (!string.IsNullOrEmpty(SelectedInstalledApp))
+            {
+                // User selected from installed apps dropdown
+                var matchingGame = _allGames.FirstOrDefault(g =>
+                    g.GameName.Equals(SelectedInstalledApp, StringComparison.OrdinalIgnoreCase));
+
+                if (matchingGame != null)
+                {
+                    packageName = matchingGame.PackageName;
+                    gameName = matchingGame.GameName;
+                }
+                else
+                {
+                    // If not in our game list, assume the dropdown entry is the package name
+                    packageName = SelectedInstalledApp;
+                    gameName = SelectedInstalledApp;
+                }
+            }
+            else
+            {
+                // Nothing selected - show error
+                if (_dialogService != null)
+                {
+                    await _dialogService.ShowErrorAsync(
+                        "Please select an installed app from the dropdown or select a game from the list.",
+                        "No App Selected");
+                }
+                return;
+            }
 
             // Select backup location
             var folderDialog = new Avalonia.Platform.Storage.FolderPickerOpenOptions
@@ -1720,19 +1801,61 @@ public class MainViewModel : ReactiveObject
             if (result is { Count: > 0 })
             {
                 var backupPath = result[0].Path.LocalPath;
-                var backupFile = Path.Combine(backupPath, $"{SelectedGame.PackageName}.ab");
+                var backupFile = Path.Combine(backupPath, $"{packageName}.ab");
 
-                ProgressStatusText = $"Backing up {SelectedGame.GameName}...";
+                ProgressStatusText = $"Backing up {gameName}...";
 
-                var backupResult = Adb.RunAdbCommandToString($"backup -f \"{backupFile}\" {SelectedGame.PackageName}");
-
-                // Check for command errors first
-                if (!string.IsNullOrEmpty(backupResult.Error))
+                // Show info dialog that user needs to confirm on device
+                if (_dialogService != null)
                 {
-                    Logger.Log($"Backup command error: {backupResult.Error}", LogLevel.Warning);
+                    _ = _dialogService.ShowInfoAsync(
+                        "Please unlock your device and confirm the backup operation when prompted.\n\n" +
+                        "The backup will start after you approve it on your device.",
+                        "Confirm Backup on Device");
                 }
 
-                if (FileSystemUtilities.FileExistsAndNotEmpty(backupFile))
+                // Run backup command in background thread
+                var (success, errorMessage) = await Task.Run(() =>
+                {
+                    var backupResult = Adb.RunAdbCommandToString($"backup -f \"{backupFile}\" {packageName}");
+
+                    // Check for command errors first
+                    if (!string.IsNullOrEmpty(backupResult.Error) &&
+                        !backupResult.Error.Contains("deprecated"))  // Ignore deprecation warning
+                    {
+                        Logger.Log($"Backup command error: {backupResult.Error}", LogLevel.Warning);
+                    }
+
+                    // Check if user confirmation is needed (output contains the message)
+                    if (backupResult.Output.Contains("confirm the backup operation"))
+                    {
+                        Logger.Log("Waiting for user to confirm backup on device...");
+
+                        // Poll for backup file with timeout (2 minutes)
+                        var timeout = DateTime.Now.AddMinutes(2);
+                        while (DateTime.Now < timeout)
+                        {
+                            if (FileSystemUtilities.FileExistsAndNotEmpty(backupFile))
+                            {
+                                return (true, "");
+                            }
+                            System.Threading.Thread.Sleep(1000); // Check every second
+                        }
+
+                        // Timeout - user didn't confirm or backup failed
+                        return (false, "Backup timed out. User may have cancelled the backup on device.");
+                    }
+
+                    // No confirmation needed - check immediately
+                    if (FileSystemUtilities.FileExistsAndNotEmpty(backupFile))
+                    {
+                        return (true, "");
+                    }
+
+                    return (false, backupResult.Error ?? "Backup file not created");
+                });
+
+                if (success)
                 {
                     ProgressStatusText = "Backup completed successfully!";
                     if (_dialogService != null)
@@ -1744,15 +1867,13 @@ public class MainViewModel : ReactiveObject
                 }
                 else
                 {
-                    ProgressStatusText = "Backup failed";
-                    Logger.Log($"Backup failed - output: {backupResult.Output}, error: {backupResult.Error}", LogLevel.Error);
+                    ProgressStatusText = "Backup failed or cancelled";
+                    Logger.Log($"Backup failed: {errorMessage}", LogLevel.Error);
                     if (_dialogService != null)
                     {
-                        var errorMsg = !string.IsNullOrEmpty(backupResult.Error)
-                            ? $"Backup command executed but file not found.\n\nError: {backupResult.Error}\n\nCheck if backup was approved on device."
-                            : "Backup command executed but file not found. Check if backup was approved on device.";
-
-                        await _dialogService.ShowWarningAsync(errorMsg, "Backup Status Unknown");
+                        await _dialogService.ShowWarningAsync(
+                            $"Backup was not completed.\n\n{errorMessage}\n\nNote: ADB backup may have been cancelled on the device.",
+                            "Backup Not Completed");
                     }
                 }
             }
@@ -1960,26 +2081,68 @@ public class MainViewModel : ReactiveObject
         await ExecuteCommandAsync("Pull App To Desktop", async () =>
         {
             if (!await EnsureDeviceConnectedAsync()) return;
-            if (!await EnsureGameSelectedAsync("extract")) return;
 
-            ProgressStatusText = $"Pulling {SelectedGame.GameName} data to desktop...";
+            // Get package name and game name from either SelectedGame or SelectedInstalledApp
+            string packageName;
+            string gameName;
+            long versionCode = 0;
+
+            // Try SelectedGame first (from main game list), then SelectedInstalledApp (from dropdown)
+            if (SelectedGame != null)
+            {
+                packageName = SelectedGame.PackageName;
+                gameName = SelectedGame.GameName;
+                versionCode = SelectedGame.InstalledVersionCode;
+            }
+            else if (!string.IsNullOrEmpty(SelectedInstalledApp))
+            {
+                // User selected from installed apps dropdown
+                var matchingGame = _allGames.FirstOrDefault(g =>
+                    g.GameName.Equals(SelectedInstalledApp, StringComparison.OrdinalIgnoreCase));
+
+                if (matchingGame != null)
+                {
+                    packageName = matchingGame.PackageName;
+                    gameName = matchingGame.GameName;
+                    versionCode = matchingGame.InstalledVersionCode;
+                }
+                else
+                {
+                    // If not in our game list, assume the dropdown entry is the package name
+                    packageName = SelectedInstalledApp;
+                    gameName = SelectedInstalledApp;
+                }
+            }
+            else
+            {
+                // Nothing selected - show error
+                if (_dialogService != null)
+                {
+                    await _dialogService.ShowErrorAsync(
+                        "Please select an installed app from the dropdown or select a game from the list.",
+                        "No App Selected");
+                }
+                return;
+            }
+
+            ProgressStatusText = $"Pulling {gameName} data to desktop...";
 
             // Run all blocking operations in background thread
-            var (success, zipPath, zipFileName, errorMessage) = await Task.Run(() =>
+            var (success, zipPath, zipFileName, errorMessage) = await Task.Run(async () =>
             {
                 try
                 {
                     // Get the APK path on device
-                    var apkPath = Adb.GetPackageApkPath(SelectedGame.PackageName);
+                    var apkPath = Adb.GetPackageApkPath(packageName);
 
                     if (string.IsNullOrEmpty(apkPath))
                     {
-                        return (false, "", "", $"Could not find package {SelectedGame.PackageName} on device.");
+                        return (false, "", "", $"Could not find package {packageName} on device.");
                     }
 
                     // Create output directory on desktop
                     var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                    var outputDir = Path.Combine(desktopPath, SelectedGame.PackageName);
+                    var outputDir = Path.Combine(desktopPath, packageName);
                     FileSystemUtilities.EnsureDirectoryExists(outputDir);
 
                     // Pull APK
@@ -1996,7 +2159,7 @@ public class MainViewModel : ReactiveObject
                     }
 
                     // Pull OBB files if they exist
-                    var obbPath = $"/sdcard/Android/obb/{SelectedGame.PackageName}/";
+                    var obbPath = $"/sdcard/Android/obb/{packageName}/";
                     var obbCheckResult = Adb.RunAdbCommandToString($"shell ls \"{obbPath}\"");
 
                     if (!obbCheckResult.Output.Contains("No such file"))
@@ -2016,7 +2179,7 @@ public class MainViewModel : ReactiveObject
                     }
 
                     // Pull app data if accessible (may require root)
-                    var dataPath = $"/sdcard/Android/data/{SelectedGame.PackageName}/";
+                    var dataPath = $"/sdcard/Android/data/{packageName}/";
                     var dataCheckResult = Adb.RunAdbCommandToString($"shell ls \"{dataPath}\"");
 
                     if (!dataCheckResult.Output.Contains("No such file"))
@@ -2036,15 +2199,15 @@ public class MainViewModel : ReactiveObject
                     }
 
                     // Create zip archive of the pulled app (matching original behavior)
-                    var versionCode = SelectedGame.InstalledVersionCode > 0 ? SelectedGame.InstalledVersionCode.ToString() : "unknown";
-                    var zipFileName = $"{SelectedGame.GameName} v{versionCode} {SelectedGame.PackageName}.zip";
+                    var versionCodeStr = versionCode > 0 ? versionCode.ToString() : "unknown";
+                    var zipFileName = $"{gameName} v{versionCodeStr} {packageName}.zip";
                     var zipPath = Path.Combine(desktopPath, zipFileName);
 
                     // Remove existing zip if it exists
                     FileSystemUtilities.DeleteFileIfExists(zipPath);
 
                     // Create archive of the output directory
-                    Zip.CreateArchive(zipPath, $"{outputDir}/*").Wait();
+                    await Zip.CreateArchive(zipPath, $"{outputDir}/*");
 
                     // Delete the temporary folder now that we have the zip
                     Directory.Delete(outputDir, true);
@@ -2071,7 +2234,7 @@ public class MainViewModel : ReactiveObject
             if (_dialogService != null)
             {
                 await _dialogService.ShowInfoAsync(
-                    $"{SelectedGame.GameName} pulled to:\n\n{zipFileName}\n\nOn your desktop!",
+                    $"{gameName} pulled to:\n\n{zipFileName}\n\nOn your desktop!",
                     "Pull Complete");
             }
 
@@ -2169,7 +2332,46 @@ public class MainViewModel : ReactiveObject
         await ExecuteCommandAsync("Backup Gamedata", async () =>
         {
             if (!await EnsureDeviceConnectedAsync()) return;
-            if (!await EnsureGameSelectedAsync("backup")) return;
+
+            // Get package name and game name from either SelectedGame or SelectedInstalledApp
+            string packageName;
+            string gameName;
+
+            // Try SelectedGame first (from main game list), then SelectedInstalledApp (from dropdown)
+            if (SelectedGame != null)
+            {
+                packageName = SelectedGame.PackageName;
+                gameName = SelectedGame.GameName;
+            }
+            else if (!string.IsNullOrEmpty(SelectedInstalledApp))
+            {
+                // User selected from installed apps dropdown
+                var matchingGame = _allGames.FirstOrDefault(g =>
+                    g.GameName.Equals(SelectedInstalledApp, StringComparison.OrdinalIgnoreCase));
+
+                if (matchingGame != null)
+                {
+                    packageName = matchingGame.PackageName;
+                    gameName = matchingGame.GameName;
+                }
+                else
+                {
+                    // If not in our game list, assume the dropdown entry is the package name
+                    packageName = SelectedInstalledApp;
+                    gameName = SelectedInstalledApp;
+                }
+            }
+            else
+            {
+                // Nothing selected - show error
+                if (_dialogService != null)
+                {
+                    await _dialogService.ShowErrorAsync(
+                        "Please select an installed app from the dropdown or select a game from the list.",
+                        "No App Selected");
+                }
+                return;
+            }
 
             // Select backup location
             var folderDialog = new Avalonia.Platform.Storage.FolderPickerOpenOptions
@@ -2186,16 +2388,16 @@ public class MainViewModel : ReactiveObject
             if (result is { Count: > 0 })
             {
                 var backupPath = result[0].Path.LocalPath;
-                ProgressStatusText = $"Backing up {SelectedGame.GameName} data...";
+                ProgressStatusText = $"Backing up {gameName} data...";
 
                 // Run all blocking operations in background thread
                 var gameBackupDir = await Task.Run(() =>
                 {
-                    var gameBackupDir = Path.Combine(backupPath, SelectedGame.PackageName);
+                    var gameBackupDir = Path.Combine(backupPath, packageName);
                     FileSystemUtilities.EnsureDirectoryExists(gameBackupDir);
 
                     // Backup OBB files
-                    var obbSourcePath = $"/sdcard/Android/obb/{SelectedGame.PackageName}/";
+                    var obbSourcePath = $"/sdcard/Android/obb/{packageName}/";
                     var obbCheckResult = Adb.RunAdbCommandToString($"shell ls \"{obbSourcePath}\"");
 
                     if (!obbCheckResult.Output.Contains("No such file"))
@@ -2215,7 +2417,7 @@ public class MainViewModel : ReactiveObject
                     }
 
                     // Backup app data from /sdcard/Android/data/
-                    var dataSourcePath = $"/sdcard/Android/data/{SelectedGame.PackageName}/";
+                    var dataSourcePath = $"/sdcard/Android/data/{packageName}/";
                     var dataCheckResult = Adb.RunAdbCommandToString($"shell ls \"{dataSourcePath}\"");
 
                     if (!dataCheckResult.Output.Contains("No such file"))
@@ -2961,7 +3163,7 @@ public class MainViewModel : ReactiveObject
                 }
 
                 // Fire-and-forget - don't await so queue processing continues
-                _dialogService.ShowInfoAsync(message, "Download Complete").GetAwaiter().GetResult();
+                _ = _dialogService.ShowInfoAsync(message, "Download Complete");
             }
         }
         catch (Exception ex)

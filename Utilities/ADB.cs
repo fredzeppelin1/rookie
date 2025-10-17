@@ -165,18 +165,20 @@ public class Adb
                     Logger.Log($"ADB Error: {stderr}", LogLevel.Warning);
                 }
 
-                // Check for common errors
+                // Check for common errors - use fire-and-forget to avoid deadlocks
                 if (stderr!.Contains("device unauthorized") || stderr.Contains("ADB_VENDOR_KEYS"))
                 {
                     if (!Settings.AdbDebugWarned)
                     {
-                        AdbDebugWarning().GetAwaiter().GetResult();
+                        // Fire-and-forget - don't block synchronous callback
+                        _ = AdbDebugWarning();
                     }
                 }
 
                 if (stderr.Contains("not enough space") || stdout!.Contains("not enough space"))
                 {
-                    ShowInsufficientStorageWarning().GetAwaiter().GetResult();
+                    // Fire-and-forget - don't block synchronous callback
+                    _ = ShowInsufficientStorageWarning();
                 }
             });
 
@@ -874,12 +876,19 @@ public class Adb
                 return (true, ipCommand);
             }
 
-            Logger.Log($"Failed to connect to wireless ADB: {connectResult.Output} {connectResult.Error}", LogLevel.Error);
+            // Connection failed - error message can be in Output or Error
+            var errorMessage = !string.IsNullOrEmpty(connectResult.Error)
+                ? connectResult.Error
+                : connectResult.Output;
+
+            Logger.Log($"Failed to connect to wireless ADB: {errorMessage}", LogLevel.Error);
 
             if (dialogService != null)
             {
                 await dialogService.ShowErrorAsync(
-                    $"Failed to enable wireless ADB.\n\nError: {connectResult.Error}",
+                    $"Failed to enable wireless ADB.\n\n{errorMessage.Trim()}\n\n" +
+                    "If you see 'failed to authenticate', make sure you've authorized USB debugging on the device, " +
+                    "then disconnect and reconnect the USB cable before trying again.",
                     "Wireless ADB Failed");
             }
 

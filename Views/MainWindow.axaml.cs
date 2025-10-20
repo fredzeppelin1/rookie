@@ -5,6 +5,8 @@ using AndroidSideloader.Utilities;
 using AndroidSideloader.ViewModels;
 using Avalonia.Controls;
 using Avalonia.Input;
+using MsBox.Avalonia;
+using MsBox.Avalonia.Enums;
 
 namespace AndroidSideloader.Views;
 
@@ -120,7 +122,7 @@ public partial class MainWindow : Window
                     else
                     {
                         // Execute the ADB command
-                        await ExecuteAdbCommand(input);
+                        await ExecuteAdbCommand(this, input);
                     }
 
                     // Clear the text and reset mode
@@ -137,7 +139,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static async Task ExecuteAdbCommand(string command)
+    private static async Task ExecuteAdbCommand(Window window, string command)
     {
         try
         {
@@ -146,22 +148,42 @@ public partial class MainWindow : Window
             // Run the ADB command
             var result = Adb.RunAdbCommandToString(command);
 
-            // Show result to user
-            if (!string.IsNullOrEmpty(result.Output))
+            // Show result to user in a dialog
+            if (!string.IsNullOrEmpty(result.Output) || !string.IsNullOrEmpty(result.Error))
             {
-                Logger.Log($"ADB command output:\n{result.Output}");
-                // TODO: Show result in a dialog or output panel
-                await Task.CompletedTask;
-            }
+                var message = string.Empty;
 
-            if (!string.IsNullOrEmpty(result.Error))
-            {
-                Logger.Log($"ADB command error: {result.Error}", LogLevel.Error);
+                if (!string.IsNullOrEmpty(result.Output))
+                {
+                    message += $"Output:\n{result.Output}";
+                    Logger.Log($"ADB command output:\n{result.Output}");
+                }
+
+                if (!string.IsNullOrEmpty(result.Error))
+                {
+                    if (message.Length > 0) message += "\n\n";
+                    message += $"Error:\n{result.Error}";
+                    Logger.Log($"ADB command error: {result.Error}", LogLevel.Error);
+                }
+
+                var messageBox = MessageBoxManager.GetMessageBoxStandard(
+                    "ADB Command Result",
+                    message,
+                    ButtonEnum.Ok);
+
+                await messageBox.ShowWindowDialogAsync(window);
             }
         }
         catch (System.Exception ex)
         {
             Logger.Log($"Failed to execute ADB command: {ex.Message}", LogLevel.Error);
+
+            var errorBox = MessageBoxManager.GetMessageBoxStandard(
+                "ADB Command Error",
+                $"Failed to execute ADB command:\n{ex.Message}",
+                ButtonEnum.Ok);
+
+            await errorBox.ShowWindowDialogAsync(window);
         }
     }
 

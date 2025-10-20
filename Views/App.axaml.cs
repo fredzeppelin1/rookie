@@ -264,14 +264,6 @@ public class App : Application
                     {
                         Logger.Log($"Failed to copy crash ID to clipboard: {ex.Message}", LogLevel.Warning);
                     }
-
-                    // TODO: Show message to user with crash ID
-                    // This requires the dialog service to be set up
-                    // For now, just log it prominently
-                    Logger.Log("===========================================", LogLevel.Error);
-                    Logger.Log($"CRASH LOG UPLOADED - CRASH ID: {crashId}", LogLevel.Error);
-                    Logger.Log("Please provide this ID to support staff", LogLevel.Error);
-                    Logger.Log("===========================================", LogLevel.Error);
                 });
 
                 return crashId; // Return the crash ID to show dialog later

@@ -59,15 +59,27 @@ public static class GetDependencies
             ZipFile.ExtractToDirectory(rcloneZipPath, extractPath, true);
 
             // Create rclone subdirectory (rclonePath already declared at top of method)
+            // Delete existing rclone directory if it exists to avoid conflicts
+            if (Directory.Exists(rclonePath))
+            {
+                Directory.Delete(rclonePath, true);
+            }
             Directory.CreateDirectory(rclonePath);
 
             var extractedFolder = Path.GetFileNameWithoutExtension(rcloneZipUrl);
-            var extractedFiles = Directory.GetFiles(Path.Combine(extractPath, extractedFolder), "*").ToList();
+            var extractedFolderPath = Path.Combine(extractPath, extractedFolder);
+            var extractedFiles = Directory.GetFiles(extractedFolderPath, "*").ToList();
 
             // Copy extracted files to rclone subdirectory
             foreach (var mFile in extractedFiles.Select(file => new FileInfo(file)))
             {
                 mFile.CopyTo(Path.Combine(rclonePath, mFile.Name), true);
+            }
+
+            // Clean up the extracted folder after copying files
+            if (Directory.Exists(extractedFolderPath))
+            {
+                Directory.Delete(extractedFolderPath, true);
             }
 
             Console.WriteLine("Rclone downloaded and extracted successfully.");
@@ -82,12 +94,13 @@ public static class GetDependencies
     public static async Task Download7Zip()
     {
         var extractPath = AppDomain.CurrentDomain.BaseDirectory;
+        var sevenZipPath = Path.Combine(extractPath, "7zip");
 
         // Check if 7z executable already exists
         // Windows: 7za.exe (standalone console version from extra package)
         // macOS: 7zz (from mac tar.xz package)
         var sevenZipExeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "7za.exe" : "7zz";
-        var sevenZipExePath = Path.Combine(extractPath, sevenZipExeName);
+        var sevenZipExePath = Path.Combine(sevenZipPath, sevenZipExeName);
 
         if (File.Exists(sevenZipExePath))
         {
@@ -120,7 +133,14 @@ public static class GetDependencies
                 }
             }
 
-            Console.WriteLine($"Extracting 7-Zip to: {extractPath}");
+            Console.WriteLine($"Extracting 7-Zip to: {sevenZipPath}");
+
+            // Delete existing 7zip directory if it exists to avoid conflicts
+            if (Directory.Exists(sevenZipPath))
+            {
+                Directory.Delete(sevenZipPath, true);
+            }
+            Directory.CreateDirectory(sevenZipPath);
 
             // Handle different archive formats based on platform
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -129,9 +149,9 @@ public static class GetDependencies
                 using var archive = ArchiveFactory.Open(sevenZipFilePath);
                 foreach (var entry in archive.Entries.Where(entry => !entry.IsDirectory))
                 {
-                    entry.WriteToDirectory(extractPath, new ExtractionOptions
+                    entry.WriteToDirectory(sevenZipPath, new ExtractionOptions
                     {
-                        ExtractFullPath = false, // We want files directly in extractPath
+                        ExtractFullPath = false, // We want files directly in 7zip subdirectory
                         Overwrite = true
                     });
                 }
@@ -143,7 +163,7 @@ public static class GetDependencies
                 await using var stream = new MemoryStream();
                 await xz.CopyToAsync(stream);
                 stream.Seek(0, SeekOrigin.Begin);
-                await TarFile.ExtractToDirectoryAsync(stream, extractPath, true);
+                await TarFile.ExtractToDirectoryAsync(stream, sevenZipPath, true);
             }
 
             Console.WriteLine("7-Zip downloaded and extracted successfully.");

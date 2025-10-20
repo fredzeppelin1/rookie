@@ -20,10 +20,10 @@ public class Zip
             ? ["7za.exe", "7z.exe", "7zz.exe"]
             : ["7zz", "7z"];
 
-        // First, try the bundled version in the application directory
+        // First, try the bundled version in the 7zip subdirectory
         foreach (var execName in executableNames)
         {
-            var bundledPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, execName);
+            var bundledPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "7zip", execName);
             if (File.Exists(bundledPath))
             {
                 Logger.Log($"Found 7z executable: {bundledPath}");
@@ -66,8 +66,8 @@ public class Zip
             }
         }
 
-        // Fall back to first executable name (even if it doesn't exist yet)
-        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, executableNames[0]);
+        // Fall back to first executable name in 7zip subdirectory (even if it doesn't exist yet)
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "7zip", executableNames[0]);
     }
 
     private static async Task<string> RunSevenZipCommand(string arguments)

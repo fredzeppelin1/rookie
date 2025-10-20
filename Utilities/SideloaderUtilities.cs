@@ -364,4 +364,368 @@ public class SideloaderUtilities
     }
 
     #endregion
+
+    #region Custom Install Scripts
+
+    /// <summary>
+    /// Executes custom ADB commands from a text file
+    /// Used for games that require non-standard installation procedures
+    /// (e.g., custom folder structures, special file placements)
+    /// </summary>
+    /// <param name="scriptPath">Path to text file containing ADB commands</param>
+    /// <returns>ProcessOutput with execution results</returns>
+    public static async Task<ProcessOutput> RunADBCommandsFromFileAsync(string scriptPath)
+    {
+        var output = new ProcessOutput();
+        var settings = SettingsManager.Instance;
+
+        try
+        {
+            if (!File.Exists(scriptPath))
+            {
+                Logger.Log($"Custom install script not found: {scriptPath}", LogLevel.Error);
+                return new ProcessOutput("", $"Script file not found: {scriptPath}");
+            }
+
+            Logger.Log($"Running custom install script: {scriptPath}");
+
+            // Read all commands from file
+            var commands = await File.ReadAllLinesAsync(scriptPath);
+            var scriptFolder = Path.GetDirectoryName(scriptPath);
+
+            // First, extract any .7z archives in the folder
+            Logger.Log("Extracting any .7z archives in script folder...");
+            var archives = Directory.GetFiles(scriptFolder, "*.7z", SearchOption.AllDirectories);
+
+            foreach (var archivePath in archives)
+            {
+                Logger.Log($"Extracting: {Path.GetFileName(archivePath)}");
+                try
+                {
+                    await Zip.ExtractArchive(archivePath, scriptFolder);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log($"Failed to extract {Path.GetFileName(archivePath)}: {ex.Message}", LogLevel.Warning);
+                }
+            }
+
+            // Now execute each command
+            foreach (var cmd in commands)
+            {
+                // Skip empty lines and comments
+                if (string.IsNullOrWhiteSpace(cmd) || cmd.TrimStart().StartsWith("#"))
+                    continue;
+
+                // Only process lines that start with "adb"
+                if (cmd.TrimStart().StartsWith("adb"))
+                {
+                    // Replace "adb" with actual ADB path and device ID if set
+                    var processedCommand = ProcessAdbCommand(cmd.TrimStart());
+
+                    Logger.Log($"Executing custom command: {processedCommand}");
+
+                    // Execute the command (use sync version for custom scripts)
+                    var result = Adb.RunAdbCommandToString(processedCommand);
+                    output += result;
+
+                    // Filter out common benign errors
+                    if (result.Error.Contains("mkdir") || result.Error.Contains("already exists"))
+                    {
+                        // These are expected errors when directories already exist
+                        output.Error = output.Error.Replace(result.Error, "");
+                    }
+
+                    if (result.Output.Contains("reserved"))
+                    {
+                        // Filter out "reserved" warnings
+                        output.Output = output.Output.Replace(result.Output, "");
+                    }
+
+                    // Check for actual errors
+                    if (!string.IsNullOrEmpty(result.Error) &&
+                        !result.Error.Contains("mkdir") &&
+                        !result.Error.Contains("already exists"))
+                    {
+                        Logger.Log($"Command error: {result.Error}", LogLevel.Warning);
+                    }
+                }
+            }
+
+            output.Output += "\nCustom install completed successfully!";
+            Logger.Log("Custom install script completed");
+
+            return output;
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Error running custom install script: {ex.Message}", LogLevel.Error);
+            return new ProcessOutput("", $"Failed to run custom install script: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Processes an ADB command by replacing "adb" with the actual ADB path
+    /// </summary>
+    private static string ProcessAdbCommand(string command)
+    {
+        // Remove "adb" from the start of the command
+        var commandWithoutAdb = command.Substring(3).TrimStart();
+
+        // ADB.RunAdbCommandAsync already handles device ID and path,
+        // so we just return the command without "adb"
+        return commandWithoutAdb;
+    }
+
+    /// <summary>
+    /// Checks if a game has a custom install script
+    /// </summary>
+    /// <param name="gameFolderPath">Path to downloaded game folder</param>
+    /// <returns>Path to install script if found, null otherwise</returns>
+    public static string FindCustomInstallScript(string gameFolderPath)
+    {
+        if (!Directory.Exists(gameFolderPath))
+            return null;
+
+        // Look for common script file names
+        var possibleScriptNames = new[]
+        {
+            "install.txt",
+            "custom_install.txt",
+            "adb_commands.txt",
+            "install_commands.txt"
+        };
+
+        foreach (var scriptName in possibleScriptNames)
+        {
+            var scriptPath = Path.Combine(gameFolderPath, scriptName);
+            if (File.Exists(scriptPath))
+            {
+                Logger.Log($"Found custom install script: {scriptName}");
+                return scriptPath;
+            }
+        }
+
+        return null;
+    }
+
+    #endregion
+
+    #region Donor Upload - Extract and Prepare
+
+    /// <summary>
+    /// Extracts APK and OBB from device and prepares for upload to VRP mirror
+    /// </summary>
+    /// <param name="gameName">Game name for display</param>
+    /// <param name="packageName">Package name to extract</param>
+    /// <param name="installedVersionCode">Installed version code</param>
+    /// <param name="isUpdate">True if this is an update to existing game</param>
+    /// <returns>Tuple of (success, extractedFolder)</returns>
+    public static async Task<(bool success, string extractedFolder)> ExtractAndPrepareGameForUploadAsync(
+        string gameName,
+        string packageName,
+        ulong installedVersionCode,
+        bool isUpdate)
+    {
+        var settings = SettingsManager.Instance;
+        var gameFolder = Path.Combine(settings.MainDir, packageName);
+
+        try
+        {
+            Logger.Log($"Preparing {gameName} ({packageName}) for upload...");
+
+            // Create game folder
+            if (Directory.Exists(gameFolder))
+            {
+                Logger.Log($"Cleaning existing folder: {gameFolder}");
+                Directory.Delete(gameFolder, true);
+            }
+            Directory.CreateDirectory(gameFolder);
+
+            // Step 1: Extract APK from device
+            Logger.Log("Extracting APK from device...");
+
+            // Get APK path on device
+            var pathResult = Adb.RunAdbCommandToString($"shell pm path {packageName}");
+            if (string.IsNullOrEmpty(pathResult.Output) || pathResult.Output.Contains("Unknown package"))
+            {
+                Logger.Log($"Package not found on device: {packageName}", LogLevel.Error);
+                return (false, null);
+            }
+
+            // Extract path from "package:/data/app/.../base.apk" format
+            var apkPath = pathResult.Output.Trim();
+            if (apkPath.StartsWith("package:"))
+            {
+                apkPath = apkPath.Substring(8);
+            }
+            apkPath = apkPath.Trim();
+
+            Logger.Log($"APK path on device: {apkPath}");
+
+            // Pull APK from device
+            var localApkPath = Path.Combine(gameFolder, $"{packageName}.apk");
+            var pullResult = Adb.RunAdbCommandToString($"pull \"{apkPath}\" \"{localApkPath}\"");
+
+            if (!string.IsNullOrEmpty(pullResult.Error) && !pullResult.Error.Contains("bytes"))
+            {
+                Logger.Log($"Error extracting APK: {pullResult.Error}", LogLevel.Error);
+                return (false, null);
+            }
+
+            // Verify APK was extracted
+            if (!File.Exists(localApkPath))
+            {
+                Logger.Log("APK file not found after extraction", LogLevel.Error);
+                return (false, null);
+            }
+
+            Logger.Log($"APK extracted: {Path.GetFileName(localApkPath)}");
+
+            // Step 2: Pull OBB folder from device (if it exists)
+            Logger.Log("Extracting OBB files (if they exist)...");
+            var obbPath = $"/sdcard/Android/obb/{packageName}";
+            var obbDestination = gameFolder;
+
+            var obbPullResult = Adb.RunAdbCommandToString($"pull \"{obbPath}\" \"{obbDestination}\"");
+
+            // OBB might not exist for all games - that's OK
+            if (obbPullResult.Output.Contains("0 files pulled") ||
+                obbPullResult.Error.Contains("does not exist"))
+            {
+                Logger.Log("No OBB files found for this game");
+            }
+            else if (!string.IsNullOrEmpty(obbPullResult.Error))
+            {
+                Logger.Log($"OBB pull warning: {obbPullResult.Error}", LogLevel.Warning);
+            }
+            else
+            {
+                var obbFiles = Directory.GetFiles(gameFolder, "*.obb", SearchOption.AllDirectories);
+                Logger.Log($"OBB files extracted: {obbFiles.Length} files");
+            }
+
+            // Step 3: Create HWID.txt file (unique identifier for this upload)
+            var hwid = Uuid();
+            var hwidPath = Path.Combine(gameFolder, "HWID.txt");
+            await File.WriteAllTextAsync(hwidPath, hwid);
+            Logger.Log($"Created HWID: {hwid}");
+
+            // Step 4: Create metadata file
+            var metadata = new
+            {
+                GameName = gameName,
+                PackageName = packageName,
+                VersionCode = installedVersionCode,
+                IsUpdate = isUpdate,
+                UploadDate = DateTime.UtcNow,
+                HWID = hwid
+            };
+
+            var metadataPath = Path.Combine(gameFolder, "upload_metadata.json");
+            var metadataJson = System.Text.Json.JsonSerializer.Serialize(metadata, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(metadataPath, metadataJson);
+            Logger.Log("Created upload metadata");
+
+            Logger.Log($"Game extraction completed successfully: {gameFolder}");
+            return (true, gameFolder);
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Error preparing game for upload: {ex.Message}", LogLevel.Error);
+            return (false, null);
+        }
+    }
+
+    /// <summary>
+    /// Compresses extracted game folder for upload
+    /// </summary>
+    /// <param name="gameFolder">Folder containing extracted game files</param>
+    /// <param name="outputArchive">Path for output archive (optional)</param>
+    /// <returns>Path to created archive</returns>
+    public static async Task<string> CompressGameForUploadAsync(string gameFolder, string outputArchive = null)
+    {
+        try
+        {
+            if (!Directory.Exists(gameFolder))
+            {
+                Logger.Log($"Game folder not found: {gameFolder}", LogLevel.Error);
+                return null;
+            }
+
+            // Default archive name: packagename.7z
+            if (string.IsNullOrEmpty(outputArchive))
+            {
+                var packageName = Path.GetFileName(gameFolder);
+                outputArchive = Path.Combine(Path.GetDirectoryName(gameFolder), $"{packageName}.7z");
+            }
+
+            Logger.Log($"Compressing game folder: {gameFolder}");
+            Logger.Log($"Output archive: {outputArchive}");
+
+            await Zip.CreateArchive(outputArchive, gameFolder);
+
+            if (File.Exists(outputArchive))
+            {
+                var sizeBytes = new FileInfo(outputArchive).Length;
+                var sizeMB = sizeBytes / (1024.0 * 1024.0);
+                Logger.Log($"Archive created successfully: {sizeMB:F2} MB");
+                return outputArchive;
+            }
+            else
+            {
+                Logger.Log("Archive creation failed - file not found", LogLevel.Error);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Error compressing game: {ex.Message}", LogLevel.Error);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Uploads compressed game archive to VRP mirror
+    /// </summary>
+    /// <param name="archivePath">Path to compressed archive</param>
+    /// <param name="remotePath">Remote destination path</param>
+    /// <param name="progress">Progress reporter (optional)</param>
+    /// <returns>True if upload succeeded</returns>
+    public static async Task<bool> UploadGameArchiveAsync(
+        string archivePath,
+        string remotePath,
+        IProgress<double> progress = null)
+    {
+        try
+        {
+            if (!File.Exists(archivePath))
+            {
+                Logger.Log($"Archive not found: {archivePath}", LogLevel.Error);
+                return false;
+            }
+
+            Logger.Log($"Uploading archive to: {remotePath}");
+
+            // Use rclone upload with progress tracking
+            var result = await Rclone.runRcloneCommand_UploadConfig(
+                $"copy \"{archivePath}\" \"{remotePath}\" --progress");
+
+            if (!string.IsNullOrEmpty(result.Error) && !result.Error.Contains("Transferred:"))
+            {
+                Logger.Log($"Upload error: {result.Error}", LogLevel.Error);
+                return false;
+            }
+
+            Logger.Log("Upload completed successfully");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Error uploading game: {ex.Message}", LogLevel.Error);
+            return false;
+        }
+    }
+
+    #endregion
 }

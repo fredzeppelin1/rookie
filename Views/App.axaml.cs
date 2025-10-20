@@ -172,6 +172,15 @@ public class App : Application
                     {
                         Logger.Log($"Inner exception: {ex.InnerException.Message}", LogLevel.Error);
                     }
+
+                    // Close splash screen even if main window fails
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        splash?.Close();
+                    });
+
+                    // Log the full exception for debugging
+                    Logger.Log($"Full exception stack trace: {ex.StackTrace}", LogLevel.Error);
                 }
             });
 

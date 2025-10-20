@@ -63,6 +63,10 @@ public class MainViewModel : ReactiveObject
     // Track if a download is currently in progress
     private bool _isDownloading;
 
+    // Track retry attempts for downloads (game name -> retry count)
+    private readonly Dictionary<string, int> _downloadRetryCount = new();
+    private const int MaxDownloadRetries = 3;
+
     private string _selectedQueueItem;
     public string SelectedQueueItem
     {
@@ -3225,6 +3229,50 @@ public class MainViewModel : ReactiveObject
                     }
                 }
 
+                // Check for and execute custom install script (for games with non-standard install requirements)
+                var customScriptPath = SideloaderUtilities.FindCustomInstallScript(gameDownloadPath);
+                if (!string.IsNullOrEmpty(customScriptPath))
+                {
+                    UpdateProgress(87, "Running custom install script...");
+                    Logger.Log($"Found custom install script - executing: {Path.GetFileName(customScriptPath)}");
+
+                    try
+                    {
+                        var scriptResult = await SideloaderUtilities.RunADBCommandsFromFileAsync(customScriptPath);
+
+                        if (!string.IsNullOrEmpty(scriptResult.Error) &&
+                            !scriptResult.Error.Contains("mkdir") &&
+                            !scriptResult.Error.Contains("already exists"))
+                        {
+                            Logger.Log($"Custom install script completed with warnings: {scriptResult.Error}", LogLevel.Warning);
+
+                            if (_dialogService != null)
+                            {
+                                await _dialogService.ShowWarningAsync(
+                                    $"Custom install script completed with warnings:\n\n{scriptResult.Error}\n\n" +
+                                    $"The game may still work correctly.",
+                                    "Custom Install Warning");
+                            }
+                        }
+                        else
+                        {
+                            Logger.Log("Custom install script completed successfully");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Log($"Error running custom install script: {ex.Message}", LogLevel.Error);
+
+                        if (_dialogService != null)
+                        {
+                            await _dialogService.ShowWarningAsync(
+                                $"Failed to run custom install script:\n\n{ex.Message}\n\n" +
+                                $"Standard installation will continue.",
+                                "Custom Install Error");
+                        }
+                    }
+                }
+
                 // Copy OBB files (checks the gameDownloadPath for any .obb files) - in background
                 var obbFilesInFolder = await Task.Run(() => Directory.GetFiles(gameDownloadPath, "*.obb", SearchOption.AllDirectories));
                 if (obbFilesInFolder.Length > 0)
@@ -3298,6 +3346,12 @@ public class MainViewModel : ReactiveObject
 
             Logger.Log($"Download and install completed for {gameToDownload.GameName}");
 
+            // Clear retry count for this game (successful download)
+            if (_downloadRetryCount.Remove(gameToDownload.GameName))
+            {
+                Logger.Log($"Reset retry count for {gameToDownload.GameName}");
+            }
+
             // Clear game name from progress display
             Rclone.CurrentGameName = null;
 
@@ -3341,13 +3395,48 @@ public class MainViewModel : ReactiveObject
             Logger.Log($"Error downloading game: {ex.Message}", LogLevel.Error);
             ProgressStatusText = "Error downloading game";
 
-            if (_dialogService != null)
-            {
-                await _dialogService.ShowErrorAsync($"Error downloading:\n\n{ex.Message}", "Download Error");
-            }
+            // Auto-retry logic
+            var gameName = GamesQueue.Count > 0 ? GamesQueue[0] : SelectedGame?.GameName ?? "Unknown";
 
-            // Download failed - clear flag and process next
-            await CompleteCurrentDownloadAndProcessNextAsync();
+            // Get current retry count for this game
+            _downloadRetryCount.TryAdd(gameName, 0);
+
+            _downloadRetryCount[gameName]++;
+            var retryCount = _downloadRetryCount[gameName];
+
+            if (retryCount < MaxDownloadRetries)
+            {
+                // Retry the download
+                Logger.Log($"Download failed for '{gameName}'. Retry attempt {retryCount}/{MaxDownloadRetries}", LogLevel.Warning);
+                ProgressStatusText = $"Retrying download ({retryCount}/{MaxDownloadRetries})...";
+
+                // Wait a moment before retrying (exponential backoff: 2, 4, 8 seconds)
+                var delaySeconds = Math.Pow(2, retryCount);
+                Logger.Log($"Waiting {delaySeconds} seconds before retry...");
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+
+                // Clear downloading flag temporarily
+                _isDownloading = false;
+
+                // Retry the download
+                await DownloadInstallGameAsync();
+            }
+            else
+            {
+                // Max retries reached - show error and move to next
+                Logger.Log($"Download failed for '{gameName}' after {retryCount} attempts. Moving to next item in queue.", LogLevel.Error);
+                _downloadRetryCount.Remove(gameName); // Reset retry count for this game
+
+                if (_dialogService != null)
+                {
+                    await _dialogService.ShowErrorAsync(
+                        $"Error downloading '{gameName}' after {retryCount} attempts:\n\n{ex.Message}\n\nMoving to next item in queue.",
+                        "Download Failed");
+                }
+
+                // Download failed after retries - clear flag and process next
+                await CompleteCurrentDownloadAndProcessNextAsync();
+            }
         }
     }
 

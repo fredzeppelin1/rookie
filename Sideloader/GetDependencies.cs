@@ -6,6 +6,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using SharpCompress.Archives;
+using SharpCompress.Common;
 using SharpCompress.Compressors.Xz;
 
 namespace AndroidSideloader.Sideloader;
@@ -81,8 +83,10 @@ public static class GetDependencies
     {
         var extractPath = AppDomain.CurrentDomain.BaseDirectory;
 
-        // Check if 7z executable already exists (7zz on macOS/Linux, 7z.exe on Windows)
-        var sevenZipExeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "7z.exe" : "7zz";
+        // Check if 7z executable already exists
+        // Windows: 7za.exe (standalone console version from extra package)
+        // macOS: 7zz (from mac tar.xz package)
+        var sevenZipExeName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "7za.exe" : "7zz";
         var sevenZipExePath = Path.Combine(extractPath, sevenZipExeName);
 
         if (File.Exists(sevenZipExePath))
@@ -93,10 +97,10 @@ public static class GetDependencies
 
         Console.WriteLine("7-Zip not found, downloading...");
 
-        var sevenZipZipUrl = Get7ZipDownloadUrl();
-        var sevenZipZipFileName = Path.GetFileName(sevenZipZipUrl);
+        var sevenZipUrl = Get7ZipDownloadUrl();
+        var sevenZipFileName = Path.GetFileName(sevenZipUrl);
         var depFolderPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "dep");
-        var sevenZipZipPath = Path.Combine(depFolderPath, sevenZipZipFileName);
+        var sevenZipFilePath = Path.Combine(depFolderPath, sevenZipFileName);
 
         if (!Directory.Exists(depFolderPath))
         {
@@ -107,24 +111,42 @@ public static class GetDependencies
         {
             using (var client = new HttpClient())
             {
-                Console.WriteLine($"Downloading 7-Zip from: {sevenZipZipUrl}");
-                var response = await client.GetAsync(sevenZipZipUrl);
+                Console.WriteLine($"Downloading 7-Zip from: {sevenZipUrl}");
+                var response = await client.GetAsync(sevenZipUrl);
                 response.EnsureSuccessStatusCode();
-                await using (var fileStream = new FileStream(sevenZipZipPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                await using (var fileStream = new FileStream(sevenZipFilePath, FileMode.Create, FileAccess.Write, FileShare.None))
                 {
                     await response.Content.CopyToAsync(fileStream);
                 }
             }
 
             Console.WriteLine($"Extracting 7-Zip to: {extractPath}");
-            await using (var xz = new XZStream(File.OpenRead(sevenZipZipPath)))
-            await using (var stream = new MemoryStream())
+
+            // Handle different archive formats based on platform
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
+                // Windows: Extract .7z file using SharpCompress
+                using var archive = ArchiveFactory.Open(sevenZipFilePath);
+                foreach (var entry in archive.Entries.Where(entry => !entry.IsDirectory))
+                {
+                    entry.WriteToDirectory(extractPath, new ExtractionOptions
+                    {
+                        ExtractFullPath = false, // We want files directly in extractPath
+                        Overwrite = true
+                    });
+                }
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                // macOS: Extract .tar.xz file
+                await using var xz = new XZStream(File.OpenRead(sevenZipFilePath));
+                await using var stream = new MemoryStream();
                 await xz.CopyToAsync(stream);
                 stream.Seek(0, SeekOrigin.Begin);
                 await TarFile.ExtractToDirectoryAsync(stream, extractPath, true);
-                Console.WriteLine("7-Zip downloaded and extracted successfully.");
             }
+
+            Console.WriteLine("7-Zip downloaded and extracted successfully.");
         }
         catch (Exception ex)
         {
@@ -214,23 +236,20 @@ public static class GetDependencies
 
     private static string Get7ZipDownloadUrl()
     {
-        const string version = "2301"; // Use a specific version for stability
+        const string version = "2501"; // Use latest stable version (25.01)
 
-        // 7-Zip doesn't provide direct download links for specific architectures like rclone.
-        // It's usually a single installer or a generic zip.
-        // For cross-platform, p7zip is the common alternative on Linux/macOS.
-        // For simplicity, we'll use a placeholder for now.
-        // In a real scenario, you might need to bundle p7zip or instruct user to install it.
+        // 7-Zip doesn't provide .zip archives for Windows.
+        // The "extra" package contains standalone console executables (7za.exe, 7zr.exe, etc.)
+        // in .7z format, which we'll extract using SharpCompress.
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Example: return "https://www.7-zip.org/a/7z2301-x64.exe";
-            return $"https://www.7-zip.org/a/7z{version}-x64.zip"; // Placeholder for Windows 7-Zip
+            // Use the extra package which contains standalone console tools
+            return $"https://www.7-zip.org/a/7z{version}-extra.7z";
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            // For macOS, p7zip is usually installed via Homebrew. Bundling is complex.
-            // This URL is a placeholder and might not work directly for bundling.
+            // For macOS, use the mac tar.xz version
             return $"https://www.7-zip.org/a/7z{version}-mac.tar.xz";
         }
 

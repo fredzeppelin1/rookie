@@ -400,7 +400,8 @@ public class Rclone
                 // Add HTTP URL from PublicConfig if available
                 if (HasPublicConfig && PublicConfigFile != null && !string.IsNullOrEmpty(PublicConfigFile.BaseUri))
                 {
-                    cmd += $" --http-url {PublicConfigFile.BaseUri}";
+                    // Use = syntax to avoid quote escaping issues on Windows
+                    cmd += $" --http-url={PublicConfigFile.BaseUri}";
                     if (!string.IsNullOrEmpty(PublicMirrorExtraArgs))
                     {
                         cmd += $" {PublicMirrorExtraArgs}";
@@ -608,8 +609,11 @@ public class SideloaderRclone
     {
         Logger.Log("Downloading Metadata");
         // The :http: backend expects just the filename, the --http-url provides the base URL
-        var rclonecommand = $"copy :http:meta.7z \"{AppDomain.CurrentDomain.BaseDirectory}\"";
-        await Rclone.runRcloneCommand_PublicConfig(rclonecommand);
+        // Quote the :http: source path to prevent Windows cmd.exe from misinterpreting the colon
+        // Remove trailing backslash to prevent it from escaping the closing quote on Windows
+        var destPath = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
+        var rCloneCommand = $"copy \":http:meta.7z\" \"{destPath}\"";
+        await Rclone.runRcloneCommand_PublicConfig(rCloneCommand);
     }
 
     public static async Task ProcessMetadataFromPublic()

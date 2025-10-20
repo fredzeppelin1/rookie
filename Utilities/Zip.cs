@@ -14,8 +14,10 @@ public class Zip
     private static string GetSevenZipExecutablePath()
     {
         // Try different executable names depending on platform
+        // Windows: 7za.exe (standalone from extra package), 7z.exe (full install), 7zz.exe (alternative)
+        // macOS/Linux: 7zz (bundled), 7z (system install)
         string[] executableNames = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? ["7z.exe", "7zz.exe"]
+            ? ["7za.exe", "7z.exe", "7zz.exe"]
             : ["7zz", "7z"];
 
         // First, try the bundled version in the application directory

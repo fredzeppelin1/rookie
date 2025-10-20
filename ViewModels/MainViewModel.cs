@@ -7,12 +7,14 @@ using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using AndroidSideloader.Models;
 using AndroidSideloader.Services;
 using AndroidSideloader.Sideloader;
 using AndroidSideloader.Utilities;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using ReactiveUI;
@@ -29,6 +31,8 @@ public enum GameFilterType
 public class MainViewModel : ReactiveObject
 {
     private readonly IDialogService _dialogService;
+    private readonly YouTubeTrailerService _youtubeService;
+    private readonly WebViewTrailerPlayerService _trailerPlayerService;
 
     private string _searchText;
     public string SearchText
@@ -140,6 +144,40 @@ public class MainViewModel : ReactiveObject
         get => _selectedGameImage;
         set => this.RaiseAndSetIfChanged(ref _selectedGameImage, value);
     }
+
+    // Trailer video playback properties
+    private bool _trailersOn;
+    public bool TrailersOn
+    {
+        get => _trailersOn;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _trailersOn, value);
+            this.RaisePropertyChanged(nameof(ShowThumbnail));
+            this.RaisePropertyChanged(nameof(ShowVideoPlayer));
+        }
+    }
+
+    private bool _isVideoPlaying;
+    public bool IsVideoPlaying
+    {
+        get => _isVideoPlaying;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _isVideoPlaying, value);
+            this.RaisePropertyChanged(nameof(ShowThumbnail));
+            this.RaisePropertyChanged(nameof(ShowVideoPlayer));
+        }
+    }
+
+    // Show thumbnail when trailers are off OR when video hasn't started playing yet
+    public bool ShowThumbnail => !TrailersOn || !IsVideoPlaying;
+
+    // Show video player only when trailers are on AND video is playing
+    public bool ShowVideoPlayer => TrailersOn && IsVideoPlaying;
+
+    // TrailerPlayerService is exposed so MainWindow can set the WebView reference
+    public WebViewTrailerPlayerService TrailerPlayerService => _trailerPlayerService;
 
     private double _progressPercentage;
     public double ProgressPercentage
@@ -335,6 +373,14 @@ public class MainViewModel : ReactiveObject
         _showUpdateAvailableOnly = showUpdateAvailableOnly;
         _dialogService = dialogService; // Can be null initially, will be set later
 
+        // Initialize trailer services
+        _youtubeService = new YouTubeTrailerService();
+        _trailerPlayerService = new WebViewTrailerPlayerService();
+        Logger.Log("Trailer services initialized");
+
+        // Load TrailersOn setting from settings
+        TrailersOn = SettingsManager.Instance.TrailersOn;
+
         // Wire up RCLONE progress callback for real-time download updates
         Rclone.OnProgress = progress =>
         {
@@ -436,6 +482,35 @@ public class MainViewModel : ReactiveObject
 
         // Try to detect devices on startup (fire-and-forget to avoid blocking UI thread)
         _ = RefreshDeviceListAsync();
+
+        // Start device wakeup timer to prevent Quest from sleeping during long operations
+        // Sends KEYCODE_WAKEUP every 14 minutes (matching original behavior)
+        StartDeviceWakeupTimer();
+    }
+
+    /// <summary>
+    /// Starts a timer that sends wakeup command to device every 14 minutes
+    /// to prevent Quest from sleeping during long download/install operations
+    /// </summary>
+    private void StartDeviceWakeupTimer()
+    {
+        var wakeupTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMinutes(14)
+        };
+
+        wakeupTimer.Tick += (_, _) =>
+        {
+            // Only send wakeup if device is connected
+            if (!string.IsNullOrEmpty(Adb.DeviceId))
+            {
+                Logger.Log("Sending wakeup signal to device", LogLevel.Debug);
+                _ = Adb.RunAdbCommandToString("shell input keyevent KEYCODE_WAKEUP");
+            }
+        };
+
+        wakeupTimer.Start();
+        Logger.Log("Device wakeup timer started (14-minute interval)");
     }
 
     private void CheckCommandLineArguments()
@@ -650,12 +725,109 @@ public class MainViewModel : ReactiveObject
                     await UpdateGamesList();
                 }
             }
+            // After game list is loaded, check for contributor/donor apps
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(2000); // Small delay to let UI settle
+                    await CheckForDonorAppsAsync();
+                }
+                catch (Exception donorEx)
+                {
+                    Logger.Log($"Error checking for donor apps: {donorEx.Message}", LogLevel.Error);
+                }
+            });
         }
         catch (Exception ex)
         {
             Logger.Log($"Error initializing games: {ex.Message}", LogLevel.Error);
             // Fall back to dummy data on error
             await UpdateGamesList();
+        }
+    }
+
+    /// <summary>
+    /// Checks for apps that can be contributed to VRPirates and shows donor dialog if found
+    /// </summary>
+    private async Task CheckForDonorAppsAsync()
+    {
+        try
+        {
+            // Detect donor apps
+            var donorApps = DonorAppDetector.DetectDonorAppsAsync(_allGames.ToList(), NoAppCheck);
+
+            if (donorApps.Count == 0)
+            {
+                Logger.Log("No donor apps detected");
+                return;
+            }
+
+            Logger.Log($"Found {donorApps.Count} donor apps - showing dialog");
+
+            // Show donor apps dialog on UI thread
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                var donorWindow = new Views.DonorsListWindow(donorApps)
+                {
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen
+                };
+
+                var desktop = Avalonia.Application.Current.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
+                if (desktop?.MainWindow != null)
+                {
+                    await donorWindow.ShowDialog(desktop.MainWindow);
+                }
+
+                // Handle user selection
+                if (donorWindow.UserClickedDonate && donorWindow.SelectedApps.Count > 0)
+                {
+                    Logger.Log($"User selected {donorWindow.SelectedApps.Count} apps to donate");
+
+                    // Add selected apps to upload queue
+                    foreach (var app in donorWindow.SelectedApps)
+                    {
+                        _uploadQueue.Add(new UploadGame
+                        {
+                            GameName = app.GameName,
+                            PackageName = app.PackageName,
+                            VersionCode = app.VersionCode
+                        });
+                    }
+
+                    // Show info dialog
+                    if (_dialogService != null)
+                    {
+                        await _dialogService.ShowInfoAsync(
+                            $"{donorWindow.SelectedApps.Count} app(s) added to upload queue.\n\n" +
+                            "Use 'Process Upload Queue' to contribute them to VRPirates.",
+                            "Apps Queued for Upload");
+                    }
+                }
+
+                // Show NewApps categorization dialog if there are unselected new apps
+                if (donorWindow.UnselectedNewApps.Count > 0)
+                {
+                    Logger.Log($"Showing NewApps dialog for {donorWindow.UnselectedNewApps.Count} apps");
+
+                    var newAppsWindow = new Views.NewAppsWindow(donorWindow.UnselectedNewApps)
+                    {
+                        WindowStartupLocation = WindowStartupLocation.CenterScreen
+                    };
+
+                    var desktop2 = Avalonia.Application.Current.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
+                    if (desktop2?.MainWindow != null)
+                    {
+                        await newAppsWindow.ShowDialog(desktop2.MainWindow);
+                    }
+
+                    Logger.Log("NewApps categorization complete");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Error in CheckForDonorAppsAsync: {ex.Message}", LogLevel.Error);
         }
     }
 
@@ -1239,7 +1411,7 @@ public class MainViewModel : ReactiveObject
     private static Window GetMainWindow()
     {
         return Avalonia.Application.Current?.ApplicationLifetime is
-            Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            IClassicDesktopStyleApplicationLifetime desktop
             ? desktop.MainWindow : null;
     }
 
@@ -2858,18 +3030,14 @@ public class MainViewModel : ReactiveObject
                 }
 
                 // Calculate MD5 hash of game name (matching original behavior)
-                string gameNameHash;
-                using (var md5 = MD5.Create())
+                var bytes = Encoding.UTF8.GetBytes(gameToDownload.ReleaseName + "\n");
+                var hash = MD5.HashData(bytes);
+                var sb = new StringBuilder();
+                foreach (var b in hash)
                 {
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(gameToDownload.ReleaseName + "\n");
-                    var hash = md5.ComputeHash(bytes);
-                    var sb = new System.Text.StringBuilder();
-                    foreach (var b in hash)
-                    {
-                        sb.Append(b.ToString("x2"));
-                    }
-                    gameNameHash = sb.ToString();
+                    sb.Append(b.ToString("x2"));
                 }
+                var gameNameHash = sb.ToString();
 
                 Logger.Log($"Public mirror MD5 hash for {gameToDownload.ReleaseName}: {gameNameHash}");
 
@@ -3225,7 +3393,7 @@ public class MainViewModel : ReactiveObject
                 });
 
                 // Start downloading the next game
-                Task.Run(async () =>
+                _ = Task.Run(async () =>
                 {
                     try
                     {
@@ -3363,6 +3531,10 @@ public class MainViewModel : ReactiveObject
             if (settingsWindow.SettingsSaved)
             {
                 Logger.Log("Settings saved successfully");
+
+                // Refresh TrailersOn property from settings
+                TrailersOn = SettingsManager.Instance.TrailersOn;
+                Logger.Log($"TrailersOn refreshed: {TrailersOn}");
 
                 if (_dialogService != null)
                 {
@@ -3511,7 +3683,7 @@ public class MainViewModel : ReactiveObject
                         foreach (var subDir in subDirs)
                         {
                             var dirName = Path.GetFileName(subDir);
-                            if (dirName.StartsWith("com.") && dirName.Contains("."))
+                            if (dirName.StartsWith("com.") && dirName.Contains('.'))
                             {
                                 // Likely a package name directory with OBB files
                                 obbFolders.Add(subDir);
@@ -3641,7 +3813,7 @@ public class MainViewModel : ReactiveObject
                             foreach (var subDir in subDirs)
                             {
                                 var dirName = Path.GetFileName(subDir);
-                                if (dirName.StartsWith("com.") && dirName.Contains("."))
+                                if (dirName.StartsWith("com.") && dirName.Contains('.'))
                                 {
                                     // Found potential OBB folder - copy it
                                     Logger.Log($"Found matching OBB folder: {dirName}");
@@ -4163,7 +4335,7 @@ public class MainViewModel : ReactiveObject
                 {
                     // Use Avalonia clipboard through main window
                     var window = Avalonia.Application.Current?.ApplicationLifetime is
-                        Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+                        IClassicDesktopStyleApplicationLifetime desktop
                         ? desktop.MainWindow : null;
 
                     if (window?.Clipboard != null)
@@ -4273,6 +4445,63 @@ public class MainViewModel : ReactiveObject
                         }
                     });
                 }
+            }
+
+            // Load trailer video if TrailersOn is enabled (check settings directly to get latest value)
+            var trailersEnabled = SettingsManager.Instance.TrailersOn;
+            TrailersOn = trailersEnabled; // Update property for UI binding
+
+            if (trailersEnabled && _youtubeService != null && _trailerPlayerService != null)
+            {
+                // Clear any currently loaded trailer
+                _trailerPlayerService.Clear();
+
+                // Reset video playing state so thumbnail shows while loading
+                IsVideoPlaying = false;
+
+                // Capture the current game to check if selection changed during search
+                var gameForTrailer = SelectedGame;
+
+                // Search for trailer in background (don't block UI)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        Logger.Log($"Searching for trailer: {gameForTrailer.GameName}");
+                        var youtubeUrl = await YouTubeTrailerService.SearchForTrailerAsync(gameForTrailer.GameName);
+
+                        // Only play if same game is still selected
+                        if (SelectedGame != gameForTrailer)
+                        {
+                            Logger.Log("Game selection changed, skipping trailer playback");
+                            return;
+                        }
+
+                        if (!string.IsNullOrEmpty(youtubeUrl))
+                        {
+                            // Try to load the trailer in WebView
+                            var loadResult = await _trailerPlayerService.LoadYouTubeVideoAsync(youtubeUrl);
+
+                            if (loadResult)
+                            {
+                                IsVideoPlaying = true;
+                                Logger.Log("WebView loaded successfully, showing video player");
+                            }
+                            else
+                            {
+                                Logger.Log("WebView loading failed, keeping thumbnail visible");
+                            }
+                        }
+                        else
+                        {
+                            Logger.Log($"No trailer found for {gameForTrailer.GameName}, keeping thumbnail visible");
+                        }
+                    }
+                    catch (Exception trailerEx)
+                    {
+                        Logger.Log($"Error loading trailer: {trailerEx.Message}", LogLevel.Error);
+                    }
+                });
             }
         }
         catch (Exception ex)

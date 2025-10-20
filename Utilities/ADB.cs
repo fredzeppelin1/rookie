@@ -279,7 +279,7 @@ public class Adb
         var folder = Path.GetFileName(path);
 
         // Check if this is a file or directory
-        if (folder.Contains("."))
+        if (folder.Contains('.'))
         {
             // It's a file, get the parent directory name
             var lastFolder = Path.GetFileName(Path.GetDirectoryName(path));
@@ -1048,15 +1048,7 @@ public class Adb
 public class BatteryInfo
 {
     public int Level { get; set; }
-    public string Status { get; set; }
-    public string Health { get; set; }
+    public string Status { get; set; } = "Unknown";
+    public string Health { get; set; } = "Unknown";
     public double Temperature { get; set; }
-
-    public BatteryInfo()
-    {
-        Level = 0;
-        Status = "Unknown";
-        Health = "Unknown";
-        Temperature = 0.0;
-    }
 }

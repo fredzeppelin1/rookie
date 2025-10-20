@@ -80,7 +80,7 @@ public static class Logger
         }
 
         var time = DateTime.UtcNow.ToString("hh:mm:ss.fff tt (UTC): ");
-        var newline = text.Length > 40 && text.Contains("\n") ? "\n\n" : "\n";
+        var newline = text.Length > 40 && text.Contains('\n') ? "\n\n" : "\n";
         var logEntry = time + "[" + logLevel.ToString().ToUpper() + "] [" + GetCallerInfo() + "] " + text + newline;
 
         try
@@ -88,6 +88,12 @@ public static class Logger
             lock (LockObject)
             {
                 File.AppendAllText(_logFilePath!, logEntry);
+            }
+
+            // Also output to console when debugger is attached
+            if (System.Diagnostics.Debugger.IsAttached)
+            {
+                Console.Write(logEntry);
             }
         }
         catch (Exception ex)

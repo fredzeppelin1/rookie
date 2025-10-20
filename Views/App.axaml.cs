@@ -1,10 +1,14 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using AndroidSideloader.Sideloader;
 using AndroidSideloader.Utilities;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
+using AvaloniaWebView;
 
 namespace AndroidSideloader.Views;
 
@@ -13,6 +17,15 @@ public class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+    }
+
+    public override void RegisterServices()
+    {
+        base.RegisterServices();
+
+        // Initialize WebView (uses native WKWebView on macOS, WebView2 on Windows)
+        AvaloniaWebViewBuilder.Initialize(null);
+        Logger.Log("WebView initialized (native platform WebView)");
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -25,16 +38,17 @@ public class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             Splash splash = null;
+            string crashId = null; // Declare outside Task.Run so it's accessible later
 
             // Initialize dependencies in background
-            System.Threading.Tasks.Task.Run(async () =>
+            Task.Run(async () =>
             {
                 try
                 {
                     Logger.Log("Starting AndroidSideloader");
 
                     // Create and show splash on UI thread
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    await Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         splash = new Splash();
                         splash.Show();
@@ -46,7 +60,7 @@ public class App : Application
 
                     if (isOffline)
                     {
-                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                        await Dispatcher.UIThread.InvokeAsync(() =>
                         {
                             splash?.UpdateBackgroundImage("splashimage_offline.png");
                         });
@@ -55,13 +69,13 @@ public class App : Application
                     else
                     {
                         // Download dependencies
-                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                        await Dispatcher.UIThread.InvokeAsync(() =>
                         {
                             splash?.UpdateBackgroundImage("splashimage_deps.png");
                         });
 
                         // Download rclone
-                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                        await Dispatcher.UIThread.InvokeAsync(() =>
                         {
                             splash?.UpdateBackgroundImage("splashimage_rclone.png");
                         });
@@ -74,7 +88,7 @@ public class App : Application
                         await GetDependencies.DownloadAdb();
 
                         // Show completion splash
-                        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                        await Dispatcher.UIThread.InvokeAsync(() =>
                         {
                             splash?.UpdateBackgroundImage("splashimage.png");
                         });
@@ -91,8 +105,8 @@ public class App : Application
                         }
                     }
 
-                    // Handle crash logs if present
-                    await HandleCrashLogAsync();
+                    // Handle crash logs if present (returns crash ID if found)
+                    crashId = await HandleCrashLogAsync();
 
                     // Update LastLaunch timestamp
                     SettingsManager.Instance.LastLaunch = DateTime.Now;
@@ -112,7 +126,7 @@ public class App : Application
                     }
 
                     // Small delay to show final splash image
-                    await System.Threading.Tasks.Task.Delay(500);
+                    await Task.Delay(500);
                 }
                 catch (Exception ex)
                 {
@@ -125,23 +139,29 @@ public class App : Application
                     MainWindow mainWindow = null;
 
                     // Create main window on UI thread
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    await Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         mainWindow = new MainWindow();
                     });
 
                     // Set as desktop main window and show it
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    await Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         desktop.MainWindow = mainWindow;
                         mainWindow.Show();
                     });
 
                     // Close splash screen
-                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                    await Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         splash?.Close();
                     });
+
+                    // If a crash log was uploaded, show dialog to user
+                    if (!string.IsNullOrEmpty(crashId))
+                    {
+                        await ShowCrashLogDialogAsync(mainWindow, crashId);
+                    }
 
                     Logger.Log("Application started successfully");
                 }
@@ -164,20 +184,21 @@ public class App : Application
 
     /// <summary>
     /// Check for crash logs and upload them if found
+    /// Returns crash ID if a crash log was uploaded, null otherwise
     /// </summary>
-    private async System.Threading.Tasks.Task HandleCrashLogAsync()
+    private async Task<string> HandleCrashLogAsync()
     {
         try
         {
-            var crashLogPath = System.IO.Path.Combine(Environment.CurrentDirectory, "crashlog.txt");
+            var crashLogPath = Path.Combine(Environment.CurrentDirectory, "crashlog.txt");
 
             // Check if previous crash log exists and should be cleaned up
             if (!string.IsNullOrEmpty(SettingsManager.Instance.CurrentCrashLogPath) &&
-                System.IO.File.Exists(SettingsManager.Instance.CurrentCrashLogPath))
+                File.Exists(SettingsManager.Instance.CurrentCrashLogPath))
             {
                 try
                 {
-                    System.IO.File.Delete(SettingsManager.Instance.CurrentCrashLogPath);
+                    File.Delete(SettingsManager.Instance.CurrentCrashLogPath);
                     Logger.Log($"Deleted old crash log: {SettingsManager.Instance.CurrentCrashLogPath}");
                 }
                 catch (Exception ex)
@@ -187,9 +208,9 @@ public class App : Application
             }
 
             // Check if new crash log exists
-            if (!System.IO.File.Exists(crashLogPath))
+            if (!File.Exists(crashLogPath))
             {
-                return; // No crash log to process
+                return null; // No crash log to process
             }
 
             Logger.Log("Crash log detected - processing...", LogLevel.Warning);
@@ -198,17 +219,17 @@ public class App : Application
             var crashId = SideloaderUtilities.Uuid();
 
             // Rename crashlog.txt to UUID.log
-            var renamedPath = System.IO.Path.Combine(Environment.CurrentDirectory, $"{crashId}.log");
+            var renamedPath = Path.Combine(Environment.CurrentDirectory, $"{crashId}.log");
 
             try
             {
-                System.IO.File.Move(crashLogPath, renamedPath);
+                File.Move(crashLogPath, renamedPath);
                 Logger.Log($"Renamed crash log to: {renamedPath}");
             }
             catch (Exception ex)
             {
                 Logger.Log($"Failed to rename crash log: {ex.Message}", LogLevel.Error);
-                return;
+                return null;
             }
 
             // Save crash log info to settings
@@ -224,7 +245,7 @@ public class App : Application
                 Logger.Log("Crash log uploaded successfully");
 
                 // Copy crash ID to clipboard
-                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+                await Dispatcher.UIThread.InvokeAsync(async () =>
                 {
                     try
                     {
@@ -252,15 +273,48 @@ public class App : Application
                     Logger.Log("Please provide this ID to support staff", LogLevel.Error);
                     Logger.Log("===========================================", LogLevel.Error);
                 });
+
+                return crashId; // Return the crash ID to show dialog later
             }
-            else
-            {
-                Logger.Log($"Failed to upload crash log: {uploadResult.Error}", LogLevel.Error);
-            }
+
+            Logger.Log($"Failed to upload crash log: {uploadResult.Error}", LogLevel.Error);
+            return null;
         }
         catch (Exception ex)
         {
             Logger.Log($"Error handling crash log: {ex.Message}", LogLevel.Error);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Shows a dialog to the user informing them that a crash log was uploaded
+    /// </summary>
+    private static async Task ShowCrashLogDialogAsync(MainWindow mainWindow, string crashId)
+    {
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                // Get the dialog service from the main window's view model
+                if (mainWindow.DataContext is ViewModels.MainViewModel)
+                {
+                    var message = $"Sideloader crashed during your last use.\n\n" +
+                                $"Your crash log has been uploaded to the server.\n\n" +
+                                $"Crash Log ID: {crashId}\n\n" +
+                                $"The ID has been copied to your clipboard.\n" +
+                                $"Please mention this ID to the support team.\n\n" +
+                                $"NOTE: Upload can take up to 30 seconds to complete.";
+
+                    // Show the crash dialog using the dialog service
+                    var dialogService = new Services.AvaloniaDialogService(mainWindow);
+                    await dialogService.ShowInfoAsync(message, "Crash Log Uploaded");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Failed to show crash log dialog: {ex.Message}", LogLevel.Warning);
         }
     }
 

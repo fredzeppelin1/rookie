@@ -4,6 +4,7 @@
         xmlns:core="using:Avalonia.Xaml.Interactions.Core"
         xmlns:models="using:AndroidSideloader.Models"
         xmlns:viewModels="clr-namespace:AndroidSideloader.ViewModels"
+        xmlns:webview="clr-namespace:WebViewControl;assembly=WebViewControl.Avalonia"
         x:Class="AndroidSideloader.Views.MainWindow"
         x:DataType="viewModels:MainViewModel"
         Title="Rookie Sideloader"
@@ -374,11 +375,22 @@
                         MinWidth="250"/>
             </Grid>
 
-            <!-- Bottom Section: Screenshot on Left, Queue + Notes on Right -->
+            <!-- Bottom Section: Screenshot/Trailer on Left, Queue + Notes on Right -->
             <Grid Grid.Row="4" Margin="5,0,5,5" ColumnDefinitions="400,*">
-                <!-- Left Column: Screenshot only -->
+                <!-- Left Column: Screenshot or Video Trailer -->
                 <Border Grid.Column="0" Width="374" Height="214" Background="#1a1a1a" BorderBrush="Gray" BorderThickness="1" HorizontalAlignment="Left" Margin="0,0,5,0">
-                    <Image Source="{Binding SelectedGameImage}" Stretch="Uniform"/>
+                    <Grid x:Name="TrailerContainer">
+                        <!-- Static thumbnail image (visible when TrailersOn = false OR when video is loading) -->
+                        <Image x:Name="ThumbnailImage"
+                               Source="{Binding SelectedGameImage}"
+                               Stretch="Uniform"
+                               IsVisible="{Binding ShowThumbnail}"/>
+
+                        <!-- WebView for trailer playback (uses native WKWebView on macOS, WebView2 on Windows) -->
+                        <WebView x:Name="TrailerWebView"
+                                 IsVisible="{Binding IsVideoPlaying}"
+                                 Width="374" Height="214"/>
+                    </Grid>
                 </Border>
 
                 <!-- Right Column: Download Queue, Upload Queue, and Notes Stacked -->

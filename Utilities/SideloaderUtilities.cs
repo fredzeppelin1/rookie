@@ -138,7 +138,7 @@ public class SideloaderUtilities
             // Process each command
             foreach (var cmd in commands)
             {
-                if (string.IsNullOrWhiteSpace(cmd) || cmd.StartsWith("#") || cmd.StartsWith("//"))
+                if (string.IsNullOrWhiteSpace(cmd) || cmd.StartsWith('#') || cmd.StartsWith("//"))
                 {
                     continue; // Skip empty lines and comments
                 }
@@ -283,7 +283,7 @@ public class SideloaderUtilities
         }
 
         // Convert to hex string (no dashes)
-        var uuid = BitConverter.ToString(bytes).Replace("-", "");
+        var uuid = Convert.ToHexString(bytes);
 
         // Save to settings for future use
         Settings.Uuid = uuid;

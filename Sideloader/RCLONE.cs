@@ -45,7 +45,7 @@ public class Rclone
     // Kill RCLONE Processes that were started from Rookie by looking for child processes.
     public static void KillRclone()
     {
-        var parentProcessId = Process.GetCurrentProcess().Id;
+        var parentProcessId = Environment.ProcessId;
         var processes = Process.GetProcessesByName("rclone");
 
         foreach (var process in processes)
@@ -691,7 +691,7 @@ public class SideloaderRclone
 
         if (!tempGameList.Equals(""))
         {
-            var gameListSplited = tempGameList.Split(new[] { '\n' });
+            var gameListSplited = tempGameList.Split('\n');
             gameListSplited = gameListSplited.Skip(1).ToArray();
             foreach (var game in gameListSplited)
             {

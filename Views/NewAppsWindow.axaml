@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="using:AndroidSideloader.Models"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="500"
+        x:Class="AndroidSideloader.Views.NewAppsWindow"
+        Title="Categorize New Apps"
+        Width="700" Height="500"
+        WindowStartupLocation="CenterOwner"
+        Background="#2d2d2d">
+
+    <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto">
+
+        <!-- Title -->
+        <TextBlock Grid.Row="0" Text="Categorize New Apps"
+                   FontSize="20" FontWeight="Bold"
+                   Foreground="White" Margin="0,0,0,20"/>
+
+        <!-- Info message -->
+        <Border Grid.Row="1" Background="#404040" Padding="15" Margin="0,0,0,10" CornerRadius="5">
+            <StackPanel>
+                <TextBlock Text="These apps were found on your device but aren't in the VRPirates database yet."
+                           Foreground="White" TextWrapping="Wrap" Margin="0,0,0,5"/>
+                <TextBlock Text="Please help us categorize them:"
+                           Foreground="White" TextWrapping="Wrap" Margin="0,0,0,5"/>
+                <TextBlock Text="• Check the box if it's a VR app that should be in the database"
+                           Foreground="#4CAF50" TextWrapping="Wrap" Margin="0,0,0,2"/>
+                <TextBlock Text="• Leave unchecked if it's a regular Android app (non-VR)"
+                           Foreground="#FFC107" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Data Grid -->
+        <DataGrid Grid.Row="2"
+                  Name="NewAppsDataGrid"
+                  AutoGenerateColumns="False"
+                  CanUserReorderColumns="False"
+                  CanUserResizeColumns="True"
+                  CanUserSortColumns="True"
+                  GridLinesVisibility="All"
+                  BorderThickness="1"
+                  BorderBrush="#555"
+                  Background="#333">
+            <DataGrid.Columns>
+                <DataGridCheckBoxColumn Header="VR App?" Binding="{ReflectionBinding IsVrApp, Mode=TwoWay}" Width="80" x:DataType="models:NewApp"/>
+                <DataGridTextColumn Header="Game Name" Binding="{ReflectionBinding GameName}" Width="2*" x:DataType="models:NewApp"/>
+                <DataGridTextColumn Header="Package Name" Binding="{ReflectionBinding PackageName}" Width="2*" x:DataType="models:NewApp"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Name="SubmitButton" Content="Submit"
+                    Width="120" Height="35"
+                    Background="#4CAF50" Foreground="White"/>
+        </StackPanel>
+    </Grid>
+</Window>

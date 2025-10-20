@@ -1,0 +1,65 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="using:AndroidSideloader.Models"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="AndroidSideloader.Views.DonorsListWindow"
+        Title="Donor Apps - Contribute to VRPirates"
+        Width="800" Height="600"
+        WindowStartupLocation="CenterOwner"
+        Background="#2d2d2d">
+
+    <Grid Margin="20" RowDefinitions="Auto,Auto,*,Auto">
+
+        <!-- Title -->
+        <TextBlock Grid.Row="0" Text="Apps Available for Contribution"
+                   FontSize="20" FontWeight="Bold"
+                   Foreground="White" Margin="0,0,0,20"/>
+
+        <!-- Info message -->
+        <Border Grid.Row="1" Background="#404040" Padding="15" Margin="0,0,0,10" CornerRadius="5">
+            <StackPanel>
+                <TextBlock Text="The following apps on your device can be contributed to VRPirates:"
+                           Foreground="White" TextWrapping="Wrap" Margin="0,0,0,5"/>
+                <TextBlock Text="• Apps marked 'Update' have newer versions than what's in the database"
+                           Foreground="#8BC34A" TextWrapping="Wrap" Margin="0,0,0,2"/>
+                <TextBlock Text="• Apps marked 'New App' aren't in the database yet"
+                           Foreground="#03A9F4" TextWrapping="Wrap" Margin="0,0,0,5"/>
+                <TextBlock Text="Select the apps you'd like to upload and click 'Donate'."
+                           Foreground="White" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Data Grid -->
+        <DataGrid Grid.Row="2"
+                  Name="DonorsDataGrid"
+                  AutoGenerateColumns="False"
+                  CanUserReorderColumns="False"
+                  CanUserResizeColumns="True"
+                  CanUserSortColumns="True"
+                  GridLinesVisibility="All"
+                  BorderThickness="1"
+                  BorderBrush="#555"
+                  Background="#333">
+            <DataGrid.Columns>
+                <DataGridCheckBoxColumn Header="Select" Binding="{ReflectionBinding IsSelected, Mode=TwoWay}" Width="60" x:DataType="models:DonorApp"/>
+                <DataGridTextColumn Header="Game Name" Binding="{ReflectionBinding GameName}" Width="2*" x:DataType="models:DonorApp"/>
+                <DataGridTextColumn Header="Package Name" Binding="{ReflectionBinding PackageName}" Width="2*" x:DataType="models:DonorApp"/>
+                <DataGridTextColumn Header="Version" Binding="{ReflectionBinding VersionCode}" Width="100" x:DataType="models:DonorApp"/>
+                <DataGridTextColumn Header="Status" Binding="{ReflectionBinding Status}" Width="120" x:DataType="models:DonorApp"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Name="SkipButton" Content="Skip"
+                    Width="120" Height="35" Margin="0,0,10,0"
+                    Background="#666" Foreground="White"/>
+            <Button Name="DonateButton" Content="Donate Selected"
+                    Width="150" Height="35"
+                    Background="#4CAF50" Foreground="White"/>
+        </StackPanel>
+    </Grid>
+</Window>

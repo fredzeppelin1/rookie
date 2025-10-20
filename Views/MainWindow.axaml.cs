@@ -24,6 +24,23 @@ public partial class MainWindow : Window
         var dialogService = new AvaloniaDialogService(this);
         viewModel.SetDialogService(dialogService);
 
+        // Initialize WebView for trailer playback when window opens
+        Opened += (_, _) =>
+        {
+            Logger.Log("MainWindow opened - initializing WebView for trailers");
+
+            var trailerWebView = this.FindControl<AvaloniaWebView.WebView>("TrailerWebView");
+            if (trailerWebView != null && viewModel.TrailerPlayerService != null)
+            {
+                viewModel.TrailerPlayerService.Initialize(trailerWebView);
+                Logger.Log("WebView trailer player initialized");
+            }
+            else
+            {
+                Logger.Log("Warning: TrailerWebView or TrailerPlayerService not found", LogLevel.Warning);
+            }
+        };
+
         // Subscribe to the Closing event
         Closing += (_, _) =>
         {
@@ -37,7 +54,7 @@ public partial class MainWindow : Window
         {
             if (DataContext is MainViewModel vm)
             {
-                var files = e.DataTransfer.TryGetFiles();
+                var files = e.Data.GetFiles();
                 if (files != null)
                 {
                     var filePaths = files
@@ -51,7 +68,7 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DragEnterEvent, (_, e) =>
         {
             // Only allow file drops
-            e.DragEffects = e.DataTransfer.Contains(DataFormat.File)
+            e.DragEffects = e.Data.Contains(DataFormats.Files)
                 ? DragDropEffects.Copy
                 : DragDropEffects.None;
         });

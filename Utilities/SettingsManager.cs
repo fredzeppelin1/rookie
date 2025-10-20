@@ -67,6 +67,10 @@ public class SettingsManager
     // Favorites - stored as package names
     public HashSet<string> FavoriteGames { get; private set; }
 
+    // Contributor/Donor tracking
+    public string NonAppPackages { get; set; } // Non-VR apps (with HWID)
+    public string AppPackages { get; set; } // VR apps
+
     // Telemetry
     public DateTime? LastLaunch { get; set; }
 
@@ -134,6 +138,10 @@ public class SettingsManager
 
         // Favorites
         FavoriteGames = [];
+
+        // Contributor/Donor defaults
+        NonAppPackages = string.Empty;
+        AppPackages = string.Empty;
 
         // Load saved settings
         Load();
@@ -236,6 +244,16 @@ public class SettingsManager
                     {
                         FavoriteGames = [..loadedSettings.FavoriteGames];
                     }
+
+                    if (!string.IsNullOrEmpty(loadedSettings.NonAppPackages))
+                    {
+                        NonAppPackages = loadedSettings.NonAppPackages;
+                    }
+
+                    if (!string.IsNullOrEmpty(loadedSettings.AppPackages))
+                    {
+                        AppPackages = loadedSettings.AppPackages;
+                    }
                 }
             }
         }
@@ -290,7 +308,9 @@ public class SettingsManager
                 WirelessAdb = WirelessAdb,
                 SpoofGames = SpoofGames,
                 ResignApks = ResignApks,
-                FavoriteGames = new List<string>(FavoriteGames)
+                FavoriteGames = [..FavoriteGames],
+                NonAppPackages = NonAppPackages,
+                AppPackages = AppPackages
             };
 
             var settingsPath = GetSettingsPath();
@@ -358,5 +378,7 @@ public class SettingsManager
         public bool SpoofGames { get; init; }
         public bool ResignApks { get; init; }
         public List<string> FavoriteGames { get; init; }
+        public string NonAppPackages { get; init; }
+        public string AppPackages { get; init; }
     }
 }
